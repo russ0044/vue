@@ -13,9 +13,7 @@
       <a href="#" class="forgot">忘記密碼</a>
       <div class="button-group">
         <button @click="login">登入</button>
-       <router-link to="/Role">
-  <button>註冊</button>
-</router-link>
+        <button @click="register">註冊</button>
       </div>
     </div>
   </div>
@@ -23,6 +21,8 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+const router = useRouter()
 
 const email = ref('')
 const password = ref('')
@@ -32,12 +32,10 @@ const togglePassword = () => {
   showPassword.value = !showPassword.value
 }
 
-const login = () => {
-  alert(`登入：${email.value} / ${password.value}`)
-}
-
+ const login = () => 
+   router.push('/DashBroadView')
 const register = () => {
-  alert('前往註冊頁面')
+   router.push('/role')
 }
 </script>
 

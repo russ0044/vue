@@ -23,9 +23,9 @@ const router = useRouter()
 
 const selectRole = (role) => {
   if (role === 'boss') {
-    router.push('/boss') // 導向老闆註冊頁（可自訂）
+    router.push('/boss') 
   } else if (role === 'staff') {
-    router.push('/employee') // 導向員工註冊頁
+    router.push('/employee') 
   }
 }
 
