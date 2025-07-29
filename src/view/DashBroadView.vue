@@ -53,7 +53,7 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 // 角色可以是 'boss'、'staff'、'kitchen'，等後端資料庫偵測資料
-const role = 'kitchen'
+const role = 'boss'
 
 const user = {
   name: '某某餐飲店',
