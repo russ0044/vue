@@ -1,0 +1,43 @@
+/* src/styles/theme.css */
+:root {
+  --font-scale: 100%;
+  /* light default */
+  --app-bg: #dceeff;
+  --card-bg: #ffffff;
+  --fg: #111827;
+}
+
+.theme-dark {
+  --app-bg: #0f172a;   /* 深藍背景 */
+  --card-bg: #111827;  /* 深色卡片 */
+  --fg: #e5e7eb;
+}
+
+.theme-light {
+  --app-bg: #dceeff;
+  --card-bg: #ffffff;
+  --fg: #111827;
+}
+
+/* 緊湊模式：全站縮小間距（示例） */
+.compact .menu-button,
+.compact .order-card,
+.compact .section-card {
+  margin-bottom: 8px !important;
+  padding: 8px !important;
+}
+
+/* 減少動畫：關閉所有 transition/animation（示例） */
+.reduced-motion * {
+  animation: none !important;
+  transition: none !important;
+}
+
+html {
+  font-size: calc(16px * var(--font-scale) / 100);
+}
+
+body {
+  color: var(--fg);
+  font-size: 1rem; /* 保持基準，其他地方建議用 rem/em */
+}

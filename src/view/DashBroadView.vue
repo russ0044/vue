@@ -28,6 +28,7 @@
               :key="item"
               class="menu-button"
               style="position: relative;"
+              @click="handleStaffClick(index)"
             >
               {{ item }}
               <div v-if="index === 0" class="alert-dot">!</div>
@@ -52,11 +53,16 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
-// 角色可以是 'boss'、'staff'、'kitchen'，等後端資料庫偵測資料
-const role = 'boss'
+// 角色可以是 'boss'、'staff'、'kitchen'
+const role = 'staff'
 
 const user = {
-  name: '某某餐飲店',
+  name:
+    role === 'boss'
+      ? '某某餐飲店'
+      : role === 'kitchen'
+      ? '某某中央廚房'
+      : '某某員工',
   id: '123456789'
 }
 
@@ -66,6 +72,18 @@ const kitchenMenu = ['中央廚房管理']
 
 const goBack = () => {
   router.back()
+}
+
+const handleStaffClick = (index) => {
+  if (index === 0) {
+    router.push('/storeinventory') // 門市庫存
+  } else if (index === 1) {
+    router.push('/orders') // 訂單情況（可自訂路由）
+  } else if (index === 2) {
+    router.push('/reports') // 檢視報表
+  } else if (index === 3) {
+    router.push('/delivery') // 配送情況
+  }
 }
 </script>
 
@@ -154,6 +172,7 @@ const goBack = () => {
   background-color: white;
   text-align: center;
   position: relative;
+  cursor: pointer;
 }
 
 .alert-dot {
