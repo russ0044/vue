@@ -1,19 +1,19 @@
 <template>
-
-  <div class="login-container"> 
-    <div class="login-box">  <h1 class="system-title">餐易館</h1>
+  <div class="login-container">
+    <div class="login-box">
+      <h1 class="system-title">餐易館</h1>
       <div class="avatar">
         <img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="user" />
       </div>
       <input type="email" v-model="email" placeholder="請輸入電子郵件" />
       <div class="password-box">
         <input :type="showPassword ? 'text' : 'password'" v-model="password" placeholder="請輸入密碼" />
-        <button @click="togglePassword">{{ showPassword ? '隱藏' : '顯示' }}</button>
+        <button class="toggle-btn" @click="togglePassword">{{ showPassword ? '隱藏' : '顯示' }}</button>
       </div>
       <a href="#" class="forgot">忘記密碼</a>
       <div class="button-group">
-        <button @click="login">登入</button>
-        <button @click="register">註冊</button>
+        <button class="primary" @click="login">登入</button>
+        <button class="secondary" @click="register">註冊</button>
       </div>
     </div>
   </div>
@@ -22,20 +22,23 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+
 const router = useRouter()
 
 const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 
-const togglePassword = () => {
+function togglePassword() {
   showPassword.value = !showPassword.value
 }
 
- const login = () => 
-   router.push('/DashBroadView')
-const register = () => {
-   router.push('/role')
+function login() {
+  router.push('/DashBroadView')
+}
+
+function register() {
+  router.push('/role')
 }
 </script>
 
@@ -45,17 +48,23 @@ const register = () => {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background-color: #e0efff;
+  background: linear-gradient(135deg, #e0efff, #ffffff);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .login-box {
-  background-color: #ffffff;
-  padding: 2rem;
+  background: #ffffff;
+  padding: 2rem 2.5rem;
   border-radius: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  width: 320px;
+  width: 340px;
   text-align: center;
-  position: relative;
+}
+
+.system-title {
+  margin-bottom: 1rem;
+  font-size: 24px;
+  color: #333333;
 }
 
 .avatar img {
@@ -66,7 +75,7 @@ const register = () => {
 
 input {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.6rem;
   margin-bottom: 1rem;
   border: 1px solid #ccc;
   border-radius: 8px;
@@ -82,11 +91,18 @@ input {
   flex: 1;
 }
 
-.password-box button {
+.toggle-btn {
   margin-left: 8px;
   padding: 0.4rem 0.6rem;
   font-size: 12px;
   cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  background-color: #e0e7ff;
+}
+
+.toggle-btn:hover {
+  background-color: #c7d2fe;
 }
 
 .forgot {
@@ -97,20 +113,41 @@ input {
   text-decoration: none;
 }
 
+.forgot:hover {
+  text-decoration: underline;
+}
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+}
+
 .button-group button {
-  width: 45%;
-  padding: 0.5rem;
-  margin: 0.25rem;
+  flex: 1;
+  padding: 0.6rem;
+  margin: 0 0.25rem;
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  background-color: #0077cc;
-  color: white;
   font-size: 14px;
+  transition: background-color 0.3s;
 }
 
-.button-group button:last-child {
-  background-color: #ccc;
-  color: black;
+.button-group .primary {
+  background-color: #0077cc;
+  color: #ffffff;
+}
+
+.button-group .primary:hover {
+  background-color: #005fa3;
+}
+
+.button-group .secondary {
+  background-color: #cccccc;
+  color: #000000;
+}
+
+.button-group .secondary:hover {
+  background-color: #b3b3b3;
 }
 </style>
