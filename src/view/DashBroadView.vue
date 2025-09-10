@@ -1,192 +1,170 @@
 <template>
-  <div class="dashboard-container">
-    <div class="dashboard-box">
-      <!-- 使用者資訊卡片 -->
-      <div class="profile-card">
+  <div class="login-page ios-safe">
+    <!-- 背景 -->
+    <div class="bg"></div>
+    <div class="bg-overlay"></div>
+
+    <!-- 白卡 -->
+    <div class="card">
+      <!-- 使用者資訊（黑框） -->
+      <div class="title-box profile-card">
         <div class="user-info">
-          <div class="avatar"></div>
-          <div>
-            <div>{{ user.name }}</div>
-            <div>ID：{{ user.id }}</div>
-          </div>
+          <div class="user-name">{{ user.name }}</div>
+          <div class="user-id">ID：{{ user.id }}</div>
         </div>
-        <div class="gear-icon"></div>
+        <button class="gear-icon" aria-label="設定" @click="goSetting">⚙</button>
       </div>
 
-      <!-- 功能選單 -->
+      <!-- 選單 -->
       <div class="scrollbar">
         <div class="menu-box">
-          <!-- 老闆 -->
-          <template v-if="role === 'boss'">
-            <div class="menu-button" v-for="item in bossMenu" :key="item">{{ item }}</div>
-          </template>
-
-          <!-- 員工 -->
-          <template v-else-if="role === 'staff'">
-            <div
-              v-for="(item, index) in staffMenu"
-              :key="item"
-              class="menu-button"
-              style="position: relative;"
-              @click="handleStaffClick(index)"
-            >
-              {{ item }}
-              <div v-if="index === 0" class="alert-dot">!</div>
-            </div>
-          </template>
-
-          <!-- 中央廚房 -->
-          <template v-else-if="role === 'kitchen'">
-            <div class="menu-button" v-for="item in kitchenMenu" :key="item">{{ item }}</div>
-          </template>
+          <div class="grid">
+            <button class="tile" @click="router.push('/storeinventory')">
+              <div class="tile-icon">📦</div>
+              <span class="tile-label">門市庫存</span>
+            </button>
+            <button class="tile" @click="router.push('/orders')">
+              <div class="tile-icon">🧾</div>
+              <span class="tile-label">訂單情況</span>
+            </button>
+            <button class="tile" @click="router.push('/reports')">
+              <div class="tile-icon">📊</div>
+              <span class="tile-label">檢視報表</span>
+            </button>
+            <button class="tile" @click="router.push('/delivery')">
+              <div class="tile-icon">🚚</div>
+              <span class="tile-label">配送情況</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- 左下返回 -->
-      <button class="back-button" @click="goBack">◀</button>
+      <div class="button-group">
+        <button type="button" class="btn ghost" @click="goBack">返回</button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { useRouter } from 'vue-router'
-
 const router = useRouter()
 
-// 角色可以是 'boss'、'staff'、'kitchen'
 const role = 'staff'
-
 const user = {
-  name:
-    role === 'boss'
-      ? '某某餐飲店'
-      : role === 'kitchen'
-      ? '某某中央廚房'
-      : '某某員工',
+  name: role === 'boss' ? '某某餐飲店' : role === 'kitchen' ? '某某中央廚房' : '某某員工',
   id: '123456789'
 }
 
-const bossMenu = ['檢視店面庫存', '食材資料', '群組權限', '店面設置', '訂單設置', '報表中心']
-const staffMenu = ['門市庫存', '訂單情況', '檢視報表', '配送情況']
-const kitchenMenu = ['中央廚房管理']
-
-const goBack = () => {
-  router.back()
-}
-
-const handleStaffClick = (index) => {
-  if (index === 0) {
-    router.push('/storeinventory') // 門市庫存
-  } else if (index === 1) {
-    router.push('/orders') // 訂單情況（可自訂路由）
-  } else if (index === 2) {
-    router.push('/reports') // 檢視報表
-  } else if (index === 3) {
-    router.push('/delivery') // 配送情況
-  }
-}
+const goBack = () => router.back()
+const goSetting = () => router.push('/setting')
 </script>
 
 <style scoped>
-.dashboard-container {
-  background-color: #dceeff;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.dashboard-box {
-  background-color: #ffffff;
-  padding: 2rem;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  width: 320px;
-  text-align: center;
+/* —— 背景 —— */
+.login-page {
   position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #dceeff;
+  overflow: hidden;
+}
+.bg {
+  position: absolute; inset: 0;
+  background-image: url('@/assets/food-bg.jpg'); /* ← 這裡換你的食材背景圖 */
+  background-size: cover;
+  background-position: center;
+  filter: saturate(1.05);
+  transform: scale(1.02);
+}
+.bg-overlay {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(60vmax 60vmax at 80% 20%, rgba(14,165,233,.28), transparent 60%),
+    radial-gradient(50vmax 50vmax at 10% 90%, rgba(99,102,241,.22), transparent 60%),
+    linear-gradient(180deg, #dceeff, #ffffff);
+  mix-blend-mode: multiply;
 }
 
-/* 左下返回按鈕 */
-.back-button {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
+/* —— 卡片 —— */
+.card {
+  position: relative;
+  width: 320px;
+  max-width: calc(100% - 32px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 20px;
+  border: 1px solid rgba(0,0,0,.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 1;
+  height: 90vh;
 }
 
-/* 頭像卡片 */
-.profile-card {
-  border: 1px solid #000;
-  background-color: white;
+/* —— 使用者資訊黑框 —— */
+.title-box {
+  border: 2px solid #000;
+  background: #fff;
+  padding: 10px 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 auto 14px;
+  border-radius: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
-  margin-bottom: 16px;
 }
+.user-info { display: flex; flex-direction: column; align-items: flex-start; }
+.user-name { font-weight: 700; }
+.user-id { font-size: .875rem; color: #666; }
+.gear-icon { border: none; background: none; font-size: 20px; cursor: pointer; }
 
-.user-info {
-  display: flex;
-  align-items: center;
-}
-
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #ccc;
-  margin-right: 10px;
-}
-
-.gear-icon {
-  width: 24px;
-  height: 24px;
-  background-color: #888;
-  border-radius: 50%;
-}
-
-/* 捲動區域 */
+/* —— 選單 —— */
 .scrollbar {
-  height: 320px;
+  flex: 1;
   overflow-y: auto;
   padding-right: 4px;
 }
-
-/* 按鈕區 */
 .menu-box {
-  background-color: white;
-  border: 1px solid black;
-  border-radius: 20px;
-  padding: 20px;
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 16px;
+  padding: 14px;
 }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #000;
+  border-radius: 14px;
+  padding: 16px;
+  aspect-ratio: 1/1;
+  font-size: 24px;
+  cursor: pointer;
+  background: #f8fafc;
+}
+.tile-icon { font-size: 28px; margin-bottom: 6px; }
+.tile-label { font-weight: 700; font-size: 14px; }
 
-.menu-button {
+/* —— 返回按鈕 —— */
+.button-group { margin-top: 10px; }
+.btn {
   width: 100%;
   padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid black;
-  border-radius: 10px;
-  background-color: white;
-  text-align: center;
-  position: relative;
+  border: none;
+  border-radius: 12px;
   cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
 }
-
-.alert-dot {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 20px;
-  height: 20px;
-  background-color: red;
-  color: white;
-  border-radius: 50%;
-  font-weight: bold;
-  font-size: 16px;
-  line-height: 20px;
-  text-align: center;
-}
+.ghost { background:#e5e7eb; color:#0f172a; }
 </style>

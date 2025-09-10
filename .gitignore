@@ -33,3 +33,8 @@ dist/
 .env*
 .DS_Store
 .vscode/
+node_modules/
+dist/
+.env*
+.DS_Store
+.vscode/

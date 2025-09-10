@@ -1,6 +1,11 @@
 <template>
-  <div class="dashboard-container">
-    <div class="dashboard-box">
+  <div class="login-page ios-safe">
+    <!-- 背景 -->
+    <div class="bg"></div>
+    <div class="bg-overlay"></div>
+
+    <!-- 白卡 -->
+    <div class="card">
       <!-- 上方標題 + 設定 -->
       <div class="top-bar">
         <div class="title-box">庫存異動</div>
@@ -10,17 +15,25 @@
       <!-- 可捲動內容 -->
       <div class="scrollbar">
         <div class="menu-box">
-          <div class="menu-button" @click="goTo('scrap')">報廢</div>
-          <div class="menu-button" @click="goTo('loss')">損耗</div>
-          <div class="menu-button" @click="goTo('borrow')">借調</div>
+          <div class="menu-button" @click="goTo('scrap')">
+            <span class="emoji">🗑️</span> 報廢
+          </div>
+          <div class="menu-button" @click="goTo('loss')">
+            <span class="emoji">⚠️</span> 損耗
+          </div>
+          <div class="menu-button" @click="goTo('borrow')">
+            <span class="emoji">🤝</span> 借調
+          </div>
 
-          <!-- 保留空白，讓卡片視覺與草圖相近 -->
+          <!-- 保留空白，對齊草圖比例 -->
           <div class="spacer"></div>
         </div>
       </div>
 
-      <!-- 左下返回 -->
-      <button class="back-button" @click="goBack">◀</button>
+      <!-- 返回按鈕 -->
+      <div class="button-group">
+        <button type="button" class="btn ghost" @click="goBack">返回</button>
+      </div>
     </div>
   </div>
 </template>
@@ -36,34 +49,52 @@ const goTo = (page) => {
   const map = { scrap: 'scrap', loss: 'loss', borrow: 'borrow' }
   router.push({ name: 'StockMoveForm', params: { type: map[page] } })
 }
-
 </script>
 
 <style scoped>
-/* 與其他頁一致：藍底置中 */
-.dashboard-container {
-  background-color: #dceeff;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+/* —— 背景 —— */
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #dceeff;
+  overflow: hidden;
+}
+.bg {
+  position: absolute; inset: 0;
+  background-image: url('@/assets/food-bg.jpg'); /* 換成你的食材背景圖 */
+  background-size: cover;
+  background-position: center;
+  filter: saturate(1.05);
+  transform: scale(1.02);
+}
+.bg-overlay {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(60vmax 60vmax at 80% 20%, rgba(14,165,233,.28), transparent 60%),
+    radial-gradient(50vmax 50vmax at 10% 90%, rgba(99,102,241,.22), transparent 60%),
+    linear-gradient(180deg, #dceeff, #ffffff);
+  mix-blend-mode: multiply;
 }
 
-/* 白色主卡片 */
-.dashboard-box {
-  background-color: #ffffff;
-  padding: 2rem;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  width: 320px;              /* 與前幾個畫面一致 */
-  text-align: center;
+/* —— 卡片 —— */
+.card {
   position: relative;
+  width: 320px;
+  max-width: calc(100% - 32px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  padding: 20px;
+  border: 1px solid rgba(0,0,0,.08);
   display: flex;
   flex-direction: column;
-  height: 90vh;              /* 右側可出現捲動條 */
+  z-index: 1;
+  height: 90vh;
 }
 
-/* 標題 + 齒輪 */
+/* —— 標題列 —— */
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -72,10 +103,11 @@ const goTo = (page) => {
 }
 .title-box {
   border: 2px solid #000;
-  background-color: #fff;
-  padding: 12px 16px;
-  font-size: 18px;
-  font-weight: bold;
+  background: #fff;
+  padding: 10px 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 12px;
 }
 .gear-icon {
   background: none;
@@ -84,47 +116,55 @@ const goTo = (page) => {
   cursor: pointer;
 }
 
-/* 可捲動區域 */
+/* —— 可捲動內容 —— */
 .scrollbar {
   flex: 1;
   overflow-y: auto;
   padding-right: 4px;
 }
-
-/* 功能卡片容器 */
 .menu-box {
-  background-color: #fff;
+  background: #fff;
   border: 1px solid #000;
-  border-radius: 20px;
-  padding: 20px;
-  text-align: left;
+  border-radius: 16px;
+  padding: 16px;
 }
-
-/* 三個大按鈕 */
 .menu-button {
   width: 100%;
   padding: 12px;
   margin-bottom: 14px;
   border: 1px solid #000;
   border-radius: 10px;
-  background-color: #fff;
-  text-align: center;
+  background: #fff;
+  text-align: left;
   cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.emoji {
+  font-size: 18px;
 }
 
-/* 視覺留白，對齊草圖比例 */
+/* 視覺留白 */
 .spacer {
-  height: 260px;
+  height: 200px;
 }
 
-/* 左下返回 */
-.back-button {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  background: none;
+/* —— 返回按鈕 —— */
+.button-group { margin-top: 10px; }
+.btn {
+  width: 100%;
+  padding: 12px;
   border: none;
-  font-size: 20px;
+  border-radius: 12px;
   cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
+}
+.ghost {
+  background:#e5e7eb;
+  color:#0f172a;
 }
 </style>

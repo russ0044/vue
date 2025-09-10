@@ -6,22 +6,23 @@
 
     <!-- 白卡 -->
     <div class="card">
-      <!-- 標題在左、設定在右 -->
+      <!-- 標題（左） + 設定（右） -->
       <div class="top-bar">
-        <div class="title-box">庫存管理</div>
-        <button class="gear-icon" aria-label="設定" @click="goSetting">⚙</button>
+        <div class="title-box">配送情況</div>
+        <button class="gear-icon" @click="goToSetting">⚙</button>
       </div>
 
-      <!-- 功能選單 -->
+      <!-- 選單 -->
       <div class="scrollbar">
         <div class="menu-box">
-          <div class="menu-button" @click="goTo('move')">🔄 庫存異動</div>
-          <div class="menu-button" @click="goTo('log')">📝 異動記錄</div>
+          <div class="menu-button" @click="goTo('today')">🚚 今日配送</div>
+          <div class="menu-button" @click="goTo('historys')">🗂️ 歷史配送</div>
+          <div class="menu-button" @click="goTo('routes')">🗺️ 配送路線</div>
           <div class="spacer"></div>
         </div>
       </div>
 
-      <!-- 返回按鈕 -->
+      <!-- 返回 -->
       <div class="button-group">
         <button type="button" class="btn ghost" @click="goBack">返回</button>
       </div>
@@ -34,10 +35,11 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const goBack = () => router.back()
-const goSetting = () => router.push('/setting')
-const goTo = (page) => {
-  if (page === 'move') router.push('/StockMove')
-  if (page === 'log')  router.push('/StockMoveLog')
+const goToSetting = () => router.push('/setting')
+const goTo = (p) => {
+  if (p === 'today')   router.push('/delivery/today')
+  if (p === 'historys') router.push('/delivery/historys')
+  if (p === 'routes')  router.push('/delivery/routes')
 }
 </script>
 
@@ -54,8 +56,8 @@ const goTo = (page) => {
 .bg {
   position: absolute; inset: 0;
   background-image: url('@/assets/food-bg.jpg');
-  background-position: center;
   background-size: cover;
+  background-position: center;
   filter: saturate(1.05);
   transform: scale(1.02);
 }
@@ -84,66 +86,26 @@ const goTo = (page) => {
   height: 90vh;
 }
 
-/* —— 頂部列：左標題、右設定 —— */
-.top-bar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin-bottom:12px;
+/* —— 頂部列 —— */
+.top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.title-box {
+  border: 2px solid #000; background: #fff; padding: 10px 14px;
+  font-size: 1rem; font-weight: 700; border-radius: 12px; margin: 0;
 }
-.title-box{
-  display:inline-block;
-  border: 2px solid #000;
-  background: #fff;
-  padding: 10px 14px;
-  font-size: 1rem;
-  font-weight: 700;
-  border-radius: 12px;
-  /* 不置中 */
-  margin: 0;
-}
-.gear-icon{
-  background:none;
-  border:none;
-  font-size:20px;
-  cursor:pointer;
-}
+.gear-icon { background: none; border: none; font-size: 20px; cursor: pointer; }
 
 /* —— 選單 —— */
-.scrollbar {
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 4px;
-  margin-bottom: 12px;
-}
-.menu-box {
-  background: #fff;
-  border: 1px solid #000;
-  border-radius: 16px;
-  padding: 16px;
-}
+.scrollbar { flex: 1; overflow-y: auto; padding-right: 4px; }
+.menu-box { background:#fff; border:1px solid #000; border-radius:16px; padding:16px; }
 .menu-button {
-  width: 100%;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid #000;
-  border-radius: 10px;
-  background: #fff;
-  text-align: left;
-  cursor: pointer;
-  font-weight: 600;
-  display:flex;
-  align-items:center;
-  gap:8px;
+  width:100%; padding:12px; margin-bottom:14px;
+  border:1px solid #000; border-radius:10px; background:#fff;
+  text-align:left; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:8px;
 }
-.spacer{ height:200px; }
+.spacer { height: 200px; }
 
 /* —— 返回按鈕 —— */
-.button-group{ margin-top:8px; }
-.btn{
-  width:100%; padding:12px;
-  border:none; border-radius:12px;
-  cursor:pointer; font-weight:700; font-size:1rem;
-}
-.ghost{ background:#e5e7eb; color:#0f172a; }
+.button-group { margin-top: 10px; }
+.btn { width:100%; padding:12px; border:none; border-radius:12px; cursor:pointer; font-weight:700; font-size:1rem; }
+.ghost { background:#e5e7eb; color:#0f172a; }
 </style>

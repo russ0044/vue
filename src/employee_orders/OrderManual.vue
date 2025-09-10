@@ -1,6 +1,11 @@
 <template>
-  <div class="dashboard-container">
-    <div class="dashboard-box">
+  <div class="login-page ios-safe">
+    <!-- 背景 -->
+    <div class="bg"></div>
+    <div class="bg-overlay"></div>
+
+    <!-- 白卡 -->
+    <div class="card">
       <!-- 標題 -->
       <div class="top-bar">
         <div class="title-box">手動訂單申請</div>
@@ -10,14 +15,16 @@
       <!-- 選單 -->
       <div class="scrollbar">
         <div class="menu-box">
-          <div class="menu-button" @click="goTo('external')">外部訂貨</div>
-          <div class="menu-button" @click="goTo('kitchen')">中央廚房請貨</div>
+          <div class="menu-button" @click="goTo('external')">📦 外部訂貨</div>
+          <div class="menu-button" @click="goTo('kitchen')">🏭 中央廚房請貨</div>
           <div class="spacer"></div>
         </div>
       </div>
 
       <!-- 返回 -->
-      <button class="back-button" @click="goBack">◀</button>
+      <div class="button-group">
+        <button type="button" class="btn ghost" @click="goBack">返回</button>
+      </div>
     </div>
   </div>
 </template>
@@ -29,7 +36,6 @@ const router = useRouter()
 const goBack = () => router.back()
 const goToSetting = () => router.push('/setting')
 
-// 點擊導向到兩個子頁
 const goTo = (p) => {
   if (p === 'external') router.push('/orders/manage/external')
   if (p === 'kitchen')  router.push('/orders/manage/kitchen')
@@ -37,90 +43,114 @@ const goTo = (p) => {
 </script>
 
 <style scoped>
-/* Layout */
-.dashboard-container {
+/* —— 背景 —— */
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
   background: #dceeff;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  overflow: hidden;
+}
+.bg {
+  position: absolute; inset: 0;
+  background-image: url('@/assets/food-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  filter: saturate(1.05);
+  transform: scale(1.02);
+}
+.bg-overlay {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(60vmax 60vmax at 80% 20%, rgba(14,165,233,.28), transparent 60%),
+    radial-gradient(50vmax 50vmax at 10% 90%, rgba(99,102,241,.22), transparent 60%),
+    linear-gradient(180deg, #dceeff, #ffffff);
+  mix-blend-mode: multiply;
 }
 
-.dashboard-box {
-  background: #fff;
-  width: 320px;
-  height: 90vh;
-  padding: 2rem;
+/* —— 卡片 —— */
+.card {
   position: relative;
+  width: 320px;
+  max-width: calc(100% - 32px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  padding: 20px;
+  border: 1px solid rgba(0,0,0,.08);
   display: flex;
   flex-direction: column;
-  text-align: center;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .1);
+  z-index: 1;
+  height: 90vh;
 }
 
-/* Top bar */
+/* —— 標題列 —— */
 .top-bar {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 12px;
 }
-
 .title-box {
-  background: #fff;
-  padding: 12px 16px;
-  font-size: 18px;
-  font-weight: 700;
   border: 2px solid #000;
+  background: #fff;
+  padding: 10px 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 12px;
 }
-
 .gear-icon {
   background: none;
-  border: 0;
+  border: none;
   font-size: 20px;
   cursor: pointer;
 }
 
-/* Scroll area */
+/* —— 選單 —— */
 .scrollbar {
   flex: 1;
   overflow-y: auto;
   padding-right: 4px;
 }
-
-/* Menu box */
 .menu-box {
   background: #fff;
-  padding: 20px;
-  text-align: left;
   border: 1px solid #000;
-  border-radius: 20px;
+  border-radius: 16px;
+  padding: 16px;
 }
-
 .menu-button {
   width: 100%;
   padding: 12px;
   margin-bottom: 14px;
-  text-align: center;
-  background: #fff;
   border: 1px solid #000;
   border-radius: 10px;
+  background: #fff;
+  text-align: left;
   cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-
 .spacer {
-  height: 260px;
+  height: 200px;
 }
 
-/* Back button */
-.back-button {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  background: none;
-  border: 0;
-  font-size: 20px;
+/* —— 返回按鈕 —— */
+.button-group { margin-top: 10px; }
+.btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
   cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
+}
+.ghost {
+  background:#e5e7eb;
+  color:#0f172a;
 }
 </style>
