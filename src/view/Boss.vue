@@ -1,173 +1,74 @@
 <template>
-  <div class="boss-container">
-    <div class="form-box">
-      <!-- 頭像與相機按鈕 -->
-<div class="avatar-box">
-  <label class="avatar-wrapper">
-    <div class="avatar">
-      <img :src="avatarUrl" alt="頭像" />
-    </div>
-    <div class="camera-icon">📷</div>
-    <input type="file" accept="image/*" @change="handleUpload" hidden />
-  </label>
-</div>
-      <!-- 表單欄位 -->
-      <input type="email" v-model="email" placeholder="請輸入電子郵件" />
-      <input type="password" v-model="password" placeholder="請輸入密碼" />
-      <input type="text" v-model="storeName" placeholder="請輸入店家名稱" />
-      <input type="tel" v-model="phone" placeholder="請輸入聯絡電話" />
-
-      <!-- 中央廚房選項 -->
-      <div class="kitchen-option">
-        <span>中央廚房</span>
-        <input type="checkbox" v-model="centralKitchen" />
+  <div class="screen">
+    <header class="topbar">
+      <div class="brand">
+        <div class="avatar"></div>
+        <div>
+          <div class="title">某某餐飲店</div>
+          <div class="sub">ID: 123456789</div>
+        </div>
       </div>
 
-      <!-- 按鈕區 -->
-      <div class="bottom-buttons">
-        <button class="back-button" @click="goBack">◀</button>
-        <button class="submit-button" @click="submit">確認</button>
+      <div class="actions">
+        <button class="icon-btn" @click="goSettings" title="系統設定">⚙</button>
+        <RoleBadge />
+        <button class="logout" @click="onLogout">登出</button>
       </div>
+    </header>
+
+    <div class="body">
+      <aside class="sidebar">
+        <button :class="btnClass('inventory')"       @click="go('inventory')">檢視店面庫存</button>
+        <button :class="btnClass('ingredients')"     @click="go('ingredients')">食材資料</button>
+        <button :class="btnClass('rolegroups')"      @click="go('rolegroups')">群組權限</button>
+        <button :class="btnClass('stores')"          @click="go('stores')">店面管理</button>
+        <button :class="btnClass('thresholds')"      @click="go('thresholds')">警示門檻</button>
+        <button :class="btnClass('store-settings')"  @click="go('store-settings')">店面設定</button>
+        <button :class="btnClass('order-settings')"  @click="go('order-settings')">訂單設定</button>
+        <button :class="btnClass('invite')"          @click="go('invite')">生成邀請碼</button>
+        <button :class="btnClass('reports')"         @click="go('reports')">報表中心</button>
+      </aside>
+
+      <main class="content">
+        <router-view />
+      </main>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuth } from '@/store/auth'
+import RoleBadge from '@/components/RoleBadge.vue'
 
+const route = useRoute()
 const router = useRouter()
+const { logout } = useAuth()
 
-const email = ref('')
-const password = ref('')
-const storeName = ref('')
-const phone = ref('')
-const centralKitchen = ref(false)
-const imageUrl = ref(null)
-
-const goBack = () => {
-  router.back()
-}
-
-const submit = () => {
-  alert(`註冊資訊：
-信箱：${email.value}
-密碼：${password.value}
-店家名稱：${storeName.value}
-電話：${phone.value}
-中央廚房：${centralKitchen.value ? '是' : '否'}`)
-}
-const avatarUrl = ref('https://cdn-icons-png.flaticon.com/512/149/149071.png')
-const uploadImage = (e) => {
-  const file = e.target.files[0]
-  if (file) {
-    imageUrl.value = URL.createObjectURL(file)
-  }
-}
+const current = computed(()=> route.path.split('/').pop())
+const go  = (name)=> router.push(`/boss/${name}`)
+const btnClass = (name)=> ['navbtn', current.value===name?'active':''].join(' ')
+function onLogout(){ logout(); router.push('/login') }
+function goSettings(){ router.push('/settings') }
 </script>
 
 <style scoped>
-.boss-container {
-  background-color: #dceeff;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.form-box {
-  background-color: #ffffff;
-  padding: 2rem;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  width: 320px;
-  text-align: center;
-  position: relative;
-}
-
-.avatar-box {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 1.5rem;
-  position: relative;
-}
-
-
-.avatar {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 2px solid #333;
-}
-
-.avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  border-radius: 50%;
-}
-.placeholder-icon {
-  font-size: 48px;
-  line-height: 100px;
-}
-.camera-icon {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  background: #fff;
-  border: 1px solid #333;
-  border-radius: 50%;
-  padding: 4px;
-  font-size: 14px;
-  transform: translate(0%, 30%);
-}
-
-input[type="email"],
-input[type="password"],
-input[type="text"],
-input[type="tel"] {
-  width: 100%;
-  padding: 0.75rem;
-  margin: 0.5rem 0;
-  border: 1px solid #333;
-  border-radius: 6px;
-  font-size: 14px;
-  text-align: center;
-}
-
-.kitchen-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 1rem;
-  font-size: 14px;
-  padding: 0 0.5rem;
-}
-
-.bottom-buttons {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 1.5rem;
-}
-
-.back-button {
-  font-size: 20px;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-.avatar-wrapper {
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-}
-.submit-button {
-  background: white;
-  border: 2px solid #333;
-  border-radius: 8px;
-  padding: 0.5rem 1.5rem;
-  cursor: pointer;
-}
+.screen{max-width:1180px;margin:16px auto;background:#f8fafc;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.06);overflow:hidden}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:#fff;border-bottom:1px solid #e5e7eb}
+.brand{display:flex;gap:12px;align-items:center}
+.avatar{width:42px;height:42px;border-radius:50%;background:#e5e7eb}
+.title{font-weight:700}
+.sub{font-size:.85rem;color:#64748b}
+.body{display:flex;min-height:560px}
+.sidebar{width:260px;padding:16px;background:#fff;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;gap:12px}
+.navbtn{padding:14px 16px;border:1px solid #d1d5db;border-radius:14px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.03);text-align:center;cursor:pointer}
+.navbtn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.navbtn.active{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.content{flex:1;padding:18px}
+.actions{display:flex;align-items:center;gap:12px}
+.icon-btn{background:#fff;border:1px solid #d1d5db;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:18px;line-height:1;text-align:center;display:flex;align-items:center;justify-content:center}
+.icon-btn:hover{background:#f1f5f9}
+.logout{background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:14px}
+.logout:hover{background:#dc2626}
 </style>

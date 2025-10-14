@@ -1,147 +1,60 @@
 <template>
-  <div class="employee-container">
-    <div class="form-box">
-      <!-- 系統名稱 -->
-      <!-- 頭像與上傳功能 -->
-      <div class="avatar-box">
-        <label class="avatar-wrapper">
-          <img class="avatar" :src="avatarUrl" alt="頭像" />
-          <input type="file" accept="image/*" @change="handleUpload" hidden />
-          <div class="camera-icon">📷</div>
-        </label>
-      </div>
+  <div class="page" style="padding:0">
+    <div class="em-shell" style="display:grid;grid-template-columns:260px 1fr;min-height:100vh;">
+      <!-- 固定左欄 -->
+      <aside class="side" :class="{open:drawerOpen}" style="border-right:1px solid var(--border);border-radius:0">
+        <div class="side-head" style="display:flex;align-items:center;gap:10px">
+          <div class="thumb sm" style="width:40px;height:40px;border-radius:50%;background:#eef2ff;display:grid;place-items:center;border:none">🏪</div>
+          <div class="grow">
+            <div class="h2">某某餐飲</div>
+            <div class="muted small">店：{{ scope.storeName }}</div>
+          </div>
+        </div>
+        <nav style="padding:10px;display:flex;flex-direction:column;gap:8px">
+          <RouterLink :to="{name:'emp-inventory'}" class="tab" :class="{active:route.name==='emp-inventory'}">門市庫存</RouterLink>
+          <RouterLink :to="{name:'emp-orders'}"    class="tab" :class="{active:route.name==='emp-orders'}"    v-can="'orders.view'">訂單情況</RouterLink>
+          <RouterLink :to="{name:'emp-reports'}"   class="tab" :class="{active:route.name==='emp-reports'}"   v-can="'reports.view'">檢視報表</RouterLink>
+          <RouterLink :to="{name:'emp-delivery'}"  class="tab" :class="{active:route.name==='emp-delivery'}"  v-can="'delivery.view'">配送情況</RouterLink>
+        </nav>
+      </aside>
 
-      <!-- 表單欄位 -->
-      <input type="email" placeholder="請輸入電子郵件" v-model="email" />
-      <input type="password" placeholder="請輸入密碼" v-model="password" />
-      <input type="text" placeholder="請輸入邀請碼" v-model="inviteCode" />
+      <transition name="fade"><div v-if="drawerOpen" class="backdrop" @click="drawerOpen=false"></div></transition>
 
-      <!-- 底部按鈕 -->
-      <div class="bottom-buttons">
-        <button class="back-button" @click="goBack">◀</button>
-        <button class="submit-button" @click="submit">確認</button>
-      </div>
+      <!-- 右側內容 -->
+      <main class="page" style="padding:14px">
+        <header class="main-head">
+          <button class="icon-btn only-mobile" @click="drawerOpen=true">☰</button>
+          <div class="h1">{{ route.meta?.title || '' }}</div>
+          <div class="spacer"></div>
+          <button class="btn ghost small" @click="goHome">主頁</button>
+          <button class="btn danger small" @click="onLogout">登出</button>
+        </header>
+        <section class="card">
+          <RouterView />
+        </section>
+      </main>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuth } from '@/store/auth'
+import { useScope } from '@/store/scope'
+import { usePerm } from '@/store/perm'
 
+const route = useRoute()
 const router = useRouter()
+const { logout } = useAuth()
+const scope = useScope()
+usePerm().ensureLoaded()
 
-// 表單資料
-const email = ref('')
-const password = ref('')
-const inviteCode = ref('')
-
-// 頭像上傳預覽
-const avatarUrl = ref('https://cdn-icons-png.flaticon.com/512/149/149071.png')
-
-const handleUpload = (event) => {
-  const file = event.target.files[0]
-  if (file) {
-    avatarUrl.value = URL.createObjectURL(file)
-  }
+const drawerOpen = ref(false)
+function goHome(){ router.push({ name:'emp-inventory' }) }
+function onLogout(){
+  logout()
+  router.replace({ name:'login' }) // 統一回登入，不再跳 Boss
 }
-
-const goBack = () => {
-  router.back()
-}
-
-const submit = () => {
-  alert('送出成功')
-  // 可在此處送資料到後端 API
-}
+onMounted(()=> drawerOpen.value=false)
 </script>
-
-<style scoped>
-.employee-container {
-  background-color: #dceeff;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.form-box {
-  background-color: #ffffff;
-  padding: 2rem;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  width: 320px;
-  text-align: center;
-  position: relative;
-}
-
-.system-title {
-  font-size: 24px;
-  font-weight: bold;
-  color: #0077cc;
-  margin-bottom: 1.2rem;
-}
-
-.avatar-box {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 1.5rem;
-}
-
-.avatar-wrapper {
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-}
-
-.avatar {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid #333;
-}
-
-.camera-icon {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  background:#fff;
-  border: 1px solid #333;
-  border-radius: 50%;
-  padding: 4px;
-  font-size: 14px;
-}
-
-input {
-  width: 100%;
-  padding: 0.75rem;
-  margin: 0.5rem 0;
-  border: 1px solid #333;
-  border-radius: 4px;
-  text-align: center;
-  font-size: 14px;
-}
-
-.bottom-buttons {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  margin-top: 1rem;
-}
-
-.back-button {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.submit-button {
-  background: white;
-  border: 2px solid #333;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  cursor: pointer;
-}
-</style>
