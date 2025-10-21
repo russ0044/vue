@@ -154,6 +154,15 @@
 
               <div class="thumb" :style="{ backgroundImage: `url(${it.image || placeholder})` }"></div>
 
+              <!-- ✅ 切換按鈕移到左側、緊貼縮圖 -->
+              <div class="right-actions">
+                <button class="state-btn" :class="statusForScope(it)" @click="cycleStatusScoped(it)">
+                  {{ statusText(statusForScope(it)) }}
+                </button>
+                <button v-if="scope==='store' && isOverridden(it)" class="btn ghost small" @click="clearOverride(it)">清除覆寫</button>
+              </div>
+
+
               <div class="grow">
                 <div class="name"><strong>{{ it.name }}</strong> <span class="muted">（{{ it.code || '無代碼' }}）</span></div>
                 <div class="muted small">
@@ -161,13 +170,6 @@
                   <span>｜單位：{{ it.unit }}｜安全庫存：{{ it.safeStock ?? '—' }}</span>
                   <span v-if="scope==='store' && isOverridden(it)" class="over-chip">已覆寫</span>
                 </div>
-              </div>
-
-              <div class="row gap">
-                <button class="state-btn" :class="statusForScope(it)" @click="cycleStatusScoped(it)">
-                  {{ statusText(statusForScope(it)) }}
-                </button>
-                <button v-if="scope==='store' && isOverridden(it)" class="btn ghost small" @click="clearOverride(it)">清除覆寫</button>
               </div>
             </div>
           </div>
@@ -668,6 +670,14 @@ function importJSON(e){
 .ck input{display:none}
 .ck span{width:18px;height:18px;border:1px solid #cbd5e1;border-radius:4px;display:inline-block;background:#fff;position:relative}
 .ck input:checked + span::after{content:'';position:absolute;inset:2px;background:#2563eb;border-radius:2px}
+
+/* ✅ 新增：讓切換按鈕緊貼縮圖，靠左排列 */
+.left-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.status-row .thumb{ margin-right:2px; }
 
 /* 管理表單 */
 .form-cols{display:grid;grid-template-columns:220px 1fr;gap:16px}

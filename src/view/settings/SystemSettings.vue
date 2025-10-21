@@ -1,280 +1,175 @@
 <template>
-  <section class="sys-page">
-    <header class="sys-header">
-      <div class="title">系統設定</div>
+  <section class="page">
+    <header class="main-head">
+      <div class="h1">系統設定</div>
       <div class="spacer"></div>
-      <button class="btn ghost" @click="goHome">回到主頁</button>
+      <button class="btn ghost small" @click="goHome">回到主頁</button>
     </header>
 
-    <div class="grid">
-      <!-- 外觀 -->
-      <div class="card">
-        <div class="h3">外觀</div>
-        <div class="row">
-          <label class="label">主題</label>
+    <div class="two-col">
+      <!-- 左側說明 -->
+      <aside class="side">
+        <div class="side-head">
+          <div class="h2">本系統說明</div>
+          <p class="muted small">此頁為前端層設定：可自由切換「資料來源」與「色彩主題」，並提供常用的語系、時區、預設店面、通知與外觀密度等。未來接 Firebase 僅需沿用相同狀態。</p>
+        </div>
+        <div class="side-list">
+          <div class="side-item">
+            <div class="grow">
+              <div class="h2" style="font-size:16px">資料來源</div>
+              <div class="muted small">Local（假資料）/ Firebase（真資料）</div>
+            </div>
+          </div>
+          <div class="side-item">
+            <div class="grow">
+              <div class="h2" style="font-size:16px">色彩主題</div>
+              <div class="muted small">明亮 / 暗色 / 自動（跟隨系統）</div>
+            </div>
+          </div>
+          <div class="side-item">
+            <div class="grow">
+              <div class="h2" style="font-size:16px">偏好設定</div>
+              <div class="muted small">語系、時區、預設店面、自動更新頻率、通知、密度</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 右側：設定 -->
+      <main class="card">
+        <!-- 資料來源 -->
+        <div class="h2">資料來源</div>
+        <div class="tr">
           <div class="seg">
-            <button :class="['segbtn', theme.mode==='auto' && 'active']"  @click="setMode('auto')">自動</button>
-            <button :class="['segbtn', theme.mode==='light' && 'active']" @click="setMode('light')">亮色</button>
-            <button :class="['segbtn', theme.mode==='dark' && 'active']"  @click="setMode('dark')">暗色</button>
+            <button :class="['segbtn', sys.state.source==='local' && 'active']" @click="setSource('local')">Local（假資料）</button>
+            <button :class="['segbtn', sys.state.source==='firebase' && 'active']" @click="setSource('firebase')">Firebase</button>
           </div>
         </div>
 
-        <div class="row">
-          <label class="label">密度</label>
+        <!-- 色彩主題 -->
+        <div class="h2" style="margin-top:14px">色彩主題</div>
+        <div class="tr">
           <div class="seg">
-            <button :class="['segbtn', theme.density==='comfortable' && 'active']" @click="setDensity('comfortable')">舒適</button>
-            <button :class="['segbtn', theme.density==='compact' && 'active']"     @click="setDensity('compact')">緊湊</button>
+            <button :class="['segbtn', sys.state.theme==='light' && 'active']" @click="setTheme('light')">明亮</button>
+            <button :class="['segbtn', sys.state.theme==='dark' && 'active']" @click="setTheme('dark')">暗色</button>
+            <button :class="['segbtn', sys.state.theme==='auto' && 'active']" @click="setTheme('auto')">自動</button>
           </div>
         </div>
 
-        <div class="row">
-          <label class="label">主色</label>
-          <input type="color" class="input" v-model="accent" @change="setAccent(accent)" />
-          <span class="muted">調整按鈕、重點色</span>
-        </div>
-      </div>
+        <!-- 其他偏好 -->
+        <div class="h2" style="margin-top:14px">偏好設定</div>
 
-      <!-- 偏好 -->
-      <div class="card">
-        <div class="h3">一般偏好</div>
-
-        <div class="row">
-          <label class="label">語言</label>
-          <select class="input" v-model="lang" @change="saveLocale">
-            <option value="zh-TW">繁體中文</option>
-            <option value="zh-CN">简体中文</option>
-            <option value="en-US">English</option>
+        <div class="tr">
+          <div class="muted" style="min-width:120px">語系</div>
+          <select v-model="lang" @change="applyLang">
+            <option value="zh-TW">繁體中文（台灣）</option>
+            <option value="zh-CN">简体中文（中国）</option>
+            <option value="en-US">English（US）</option>
           </select>
         </div>
 
-        <div class="row">
-          <label class="label">時區</label>
-          <input class="input w260" v-model="tz" @change="saveTz" placeholder="Asia/Taipei">
-        </div>
-
-        <div class="row">
-          <label class="label">日期格式</label>
-          <select class="input" v-model="dateFmt" @change="saveDateFmt">
-            <option value="yyyy-MM-dd">yyyy-MM-dd</option>
-            <option value="MM/dd/yyyy">MM/dd/yyyy</option>
-            <option value="dd/MM/yyyy">dd/MM/yyyy</option>
+        <div class="tr">
+          <div class="muted" style="min-width:120px">時區</div>
+          <select v-model="tz" @change="applyTz">
+            <option value="Asia/Taipei">Asia/Taipei</option>
+            <option value="Asia/Shanghai">Asia/Shanghai</option>
+            <option value="UTC">UTC</option>
           </select>
         </div>
 
-        <div class="row">
-          <label class="label">預設店面</label>
-          <select class="input" v-model="defaultStore" @change="saveDefaultStore">
-            <option value="">— 不指定 —</option>
+        <div class="tr">
+          <div class="muted" style="min-width:120px">預設店面</div>
+          <select v-model="defaultStore" @change="applyDefaultStore">
+            <option value="">（未指定）</option>
             <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
-      </div>
 
-      <!-- 功能開關 -->
-      <div class="card">
-        <div class="h3">功能開關</div>
-
-        <div class="row switch">
-          <label>啟用 AI 自動建議訂單</label>
-          <input type="checkbox" v-model="flags.aiSuggestion" @change="saveFlags">
+        <div class="tr">
+          <div class="muted" style="min-width:120px">自動更新</div>
+          <select v-model.number="refresh" @change="applyRefresh">
+            <option :value="0">關閉</option>
+            <option :value="30">每 30 秒</option>
+            <option :value="60">每 1 分鐘</option>
+            <option :value="300">每 5 分鐘</option>
+          </select>
         </div>
 
-        <div class="row switch">
-          <label>允許員工離峰時段自動送單</label>
-          <input type="checkbox" v-model="flags.autoSubmitOffpeak" @change="saveFlags">
+        <div class="tr">
+          <div class="muted" style="min-width:120px">介面密度</div>
+          <div class="seg">
+            <button :class="['segbtn', sys.state.density==='comfortable' && 'active']" @click="setDensity('comfortable')">舒適</button>
+            <button :class="['segbtn', sys.state.density==='compact' && 'active']" @click="setDensity('compact')">緊湊</button>
+          </div>
         </div>
 
-        <div class="row switch">
-          <label>中央廚房自動配車試行</label>
-          <input type="checkbox" v-model="flags.kitchenAutoDispatch" @change="saveFlags">
+        <div class="tr">
+          <div class="muted" style="min-width:120px">通知</div>
+          <div class="tr">
+            <div class="switch" :class="{on: sys.state.notifyEmail}" @click="toggleEmail"><i></i></div>
+            <span class="muted small">Email</span>
+          </div>
+          <div class="tr">
+            <div class="switch" :class="{on: sys.state.notifyDesktop}" @click="toggleDesktop"><i></i></div>
+            <span class="muted small">桌面通知</span>
+          </div>
         </div>
 
-        <div class="muted small">* 以上為前端配置示意，未來可由後端統一控管。</div>
-      </div>
-
-      <!-- 通知 -->
-      <div class="card">
-        <div class="h3">通知設定</div>
-        <div class="row switch">
-          <label>Email 通知</label>
-          <input type="checkbox" v-model="notify.email" @change="saveNotify">
+        <div class="tr" style="margin-top:16px">
+          <button class="btn danger" @click="reset">重置所有設定</button>
+          <div class="muted small">（會清除本機儲存的系統偏好）</div>
         </div>
-        <div class="row switch">
-          <label>App 推播</label>
-          <input type="checkbox" v-model="notify.push" @change="saveNotify">
-        </div>
-        <div class="row">
-          <label class="label">通知 Email</label>
-          <input class="input w260" v-model="notify.emailTo" @change="saveNotify" placeholder="boss@example.com">
-        </div>
-      </div>
-
-      <!-- 匯入匯出 -->
-      <div class="card">
-        <div class="h3">資料管理</div>
-        <div class="row">
-          <button class="btn" @click="exportAll">匯出所有設定（JSON）</button>
-          <label class="btn ghost file-btn">
-            匯入設定
-            <input type="file" accept="application/json" @change="importAll">
-          </label>
-        </div>
-        <div class="muted small">* 僅前端設定（主題、偏好、功能開關等），作為備份或移轉。</div>
-      </div>
+      </main>
     </div>
 
-    <transition name="fade"><div v-if="toastMsg" class="toast">{{ toastMsg }}</div></transition>
+    <transition name="fade"><div v-if="toast" class="toast">{{ toast }}</div></transition>
   </section>
 </template>
 
 <script setup>
-// 不用 Pinia 的全域 store
-import { ref, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useTheme } from '@/store/theme'        // 你前面建立的零依賴版
-import { useRoleStore } from '@/store/roleStore'// 你前面建立的零依賴版
+import { useSystem } from '@/store/system'
 
 const router = useRouter()
-const { state: roleState } = useRoleStore?.() || { state:{ role:'Boss' } } // 安全 fallback
-const theme = useTheme()
+const sys = useSystem()
+const toast = ref('')
 
-// 假資料：店面清單
-const stores = ref(JSON.parse(localStorage.getItem('rep-stores') || '[]'))
-
-// 綁 UI
-const accent = ref(theme.accent.value ?? theme.accent) // 兼容 ref/值
-const lang = ref(theme.locale.value ?? theme.locale)
-const tz = ref(theme.tz.value ?? theme.tz)
-const dateFmt = ref(theme.dateFmt.value ?? theme.dateFmt)
-const defaultStore = ref(localStorage.getItem('sys.defaultStore') || '')
-
-const flags = ref({
-  aiSuggestion:       localStorage.getItem('flag.aiSuggestion') === '1',
-  autoSubmitOffpeak:  localStorage.getItem('flag.autoSubmitOffpeak') === '1',
-  kitchenAutoDispatch:localStorage.getItem('flag.kitchenAutoDispatch') === '1',
-})
-const notify = ref({
-  email:   localStorage.getItem('notify.email') === '1',
-  push:    localStorage.getItem('notify.push') === '1',
-  emailTo: localStorage.getItem('notify.emailTo') || '',
-})
-
-/* ===== 導回主頁 ===== */
-function goHome(){
-  if (roleState.role === 'Employee') return router.push({ name:'emp-inventory' })
-  if (roleState.role === 'Kitchen')  return router.push({ name:'kitchen-manage' })
-  return router.push({ name:'boss-inventory' }) // 預設老闆
-}
-
-/* ====== 即選即存 ====== */
-function setMode(m){ theme.setMode(m); tip() }
-function setDensity(d){ theme.setDensity(d); tip() }
-function setAccent(c){ theme.setAccent(c); tip() }
-
-function saveLocale(){ theme.setLocale(lang.value); tip() }
-function saveTz(){ theme.setTz(tz.value); tip() }
-function saveDateFmt(){ theme.setDateFmt(dateFmt.value); tip() }
-function saveDefaultStore(){ localStorage.setItem('sys.defaultStore', defaultStore.value); tip() }
-
-function saveFlags(){
-  localStorage.setItem('flag.aiSuggestion', flags.value.aiSuggestion ? '1':'0')
-  localStorage.setItem('flag.autoSubmitOffpeak', flags.value.autoSubmitOffpeak ? '1':'0')
-  localStorage.setItem('flag.kitchenAutoDispatch', flags.value.kitchenAutoDispatch ? '1':'0')
-  tip()
-}
-function saveNotify(){
-  localStorage.setItem('notify.email', notify.value.email ? '1':'0')
-  localStorage.setItem('notify.push',  notify.value.push ? '1':'0')
-  localStorage.setItem('notify.emailTo', notify.value.emailTo || '')
-  tip()
-}
-
-/* ===== 匯入 / 匯出 ===== */
-function exportAll(){
-  const data = {
-    theme:{
-      mode: theme.mode.value ?? theme.mode,
-      density: theme.density.value ?? theme.density,
-      accent: theme.accent.value ?? theme.accent,
-      locale: theme.locale.value ?? theme.locale,
-      tz: theme.tz.value ?? theme.tz,
-      dateFmt: theme.dateFmt.value ?? theme.dateFmt,
-    },
-    sys:{ defaultStore: defaultStore.value },
-    flags: flags.value,
-    notify: notify.value,
-  }
-  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'})
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a'); a.href=url; a.download='system-settings.json'; a.click()
-  URL.revokeObjectURL(url)
-  tip('已匯出設定')
-}
-
-function importAll(e){
-  const f = e.target.files?.[0]; if(!f) return
-  const reader = new FileReader()
-  reader.onload = () => {
-    try{
-      const obj = JSON.parse(String(reader.result))
-      if (obj.theme){
-        setMode(obj.theme.mode || 'auto')
-        setDensity(obj.theme.density || 'comfortable')
-        setAccent(obj.theme.accent || '#2563eb')
-        lang.value = obj.theme.locale || 'zh-TW'; saveLocale()
-        tz.value = obj.theme.tz || 'Asia/Taipei'; saveTz()
-        dateFmt.value = obj.theme.dateFmt || 'yyyy-MM-dd'; saveDateFmt()
-      }
-      if (obj.sys){ defaultStore.value = obj.sys.defaultStore || ''; saveDefaultStore() }
-      if (obj.flags){ flags.value = obj.flags; saveFlags() }
-      if (obj.notify){ notify.value = obj.notify; saveNotify() }
-      tip('已匯入並自動儲存')
-    }catch{ tip('匯入失敗：檔案格式錯誤') }
-  }
-  reader.readAsText(f,'utf-8')
-}
-
-/* ===== 提示 ===== */
-const toastMsg = ref('')
-function tip(msg='已自動儲存'){
-  toastMsg.value = msg; setTimeout(()=>toastMsg.value='',1200)
-}
-
-onMounted(()=>{
-  if(!stores.value.length){
-    stores.value = [
+/* 假資料的店面（若你已在 localStorage 有 stores，可自行改讀） */
+const stores = computed(()=>{
+  const raw = localStorage.getItem('boss-ingredients')
+  try{
+    const obj = raw? JSON.parse(raw) : null
+    return obj?.stores?.length ? obj.stores : [
       { id:'s1', name:'某某餐飲-總店' },
       { id:'s2', name:'某某餐飲-東門店' },
       { id:'s3', name:'某某餐飲-西門店' },
     ]
-  }
+  }catch{return [
+    { id:'s1', name:'某某餐飲-總店' },
+    { id:'s2', name:'某某餐飲-東門店' },
+    { id:'s3', name:'某某餐飲-西門店' },
+  ]}
 })
+
+/* 雙向模型（便於立即顯示） */
+const lang = ref(sys.state.language)
+const tz = ref(sys.state.timezone)
+const defaultStore = ref(sys.state.defaultStoreId)
+const refresh = ref(sys.state.refreshSec)
+
+function goHome(){ router.push({ name:'boss-inventory' }) } // 可依角色導回不同首頁
+function ping(m){ toast.value=m; setTimeout(()=>toast.value='',900) }
+
+/* setters（自動儲存 + 即時生效） */
+function setSource(v){ sys.setSource(v); ping('已切換資料來源') }
+function setTheme(v){ sys.setTheme(v); ping('已切換色彩主題') }
+function applyLang(){ sys.setLang(lang.value); ping('已更新語系') }
+function applyTz(){ sys.setTz(tz.value); ping('已更新時區') }
+function applyDefaultStore(){ sys.setDefaultStore(defaultStore.value); ping('已設定預設店面') }
+function applyRefresh(){ sys.setRefresh(refresh.value); ping('已更新自動更新頻率') }
+function setDensity(v){ sys.setDensity(v); ping('已更新介面密度') }
+function toggleEmail(){ sys.setNotifyEmail(!sys.state.notifyEmail); ping('Email 通知已切換') }
+function toggleDesktop(){ sys.setNotifyDesktop(!sys.state.notifyDesktop); ping('桌面通知已切換') }
+function reset(){ if(confirm('確定重置所有系統設定？')){ sys.resetSystem(); lang.value=sys.state.language; tz.value=sys.state.timezone; defaultStore.value=sys.state.defaultStoreId; refresh.value=sys.state.refreshSec; ping('已重置') } }
 </script>
-
-<style scoped>
-.sys-page{ padding:16px; background:var(--bg); min-height:100%; }
-.sys-header{ display:flex; align-items:center; gap:8px; margin-bottom:10px }
-.title{ font-size:20px; font-weight:800 }
-.spacer{ flex:1 }
-
-.grid{ display:grid; grid-template-columns:repeat(2, minmax(260px, 1fr)); gap:12px }
-.h3{ font-weight:800; margin:0 0 10px }
-.row{ display:flex; align-items:center; gap:10px; margin:8px 0; flex-wrap:wrap }
-.label{ min-width:90px; color:var(--muted) }
-.seg{ display:flex; gap:6px }
-.segbtn{ border:1px solid var(--border); background:var(--card); border-radius:10px; padding:6px 10px; cursor:pointer }
-.segbtn.active{ background:var(--accent-weak); border-color: color-mix(in oklab, var(--accent), #cde 40%) }
-.switch{ justify-content:space-between }
-
-.file-btn{ position:relative; overflow:hidden }
-.file-btn input{ position:absolute; inset:0; opacity:0; cursor:pointer }
-.w260{ width:260px }
-.small{ font-size:12px }
-.muted{ color:var(--muted) }
-
-.toast{ position:fixed; right:16px; bottom:16px; background:#111827; color:#fff; padding:10px 12px; border-radius:10px; opacity:.95; z-index:70; }
-
-@media (max-width:1024px){
-  .grid{ grid-template-columns:1fr }
-}
-</style>

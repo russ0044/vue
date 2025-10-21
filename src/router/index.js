@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuth } from '@/store/auth'
 import { useRoleStore } from '@/store/roleStore'
 
@@ -17,7 +17,6 @@ const NotFound     = () => import('@/view/NotFound.vue')
 const BossInventory     = () => import('@/view/boss/BossInventory.vue')
 const BossIngredients   = () => import('@/view/boss/BossIngredients.vue')
 const BossRoleGroups    = () => import('@/view/boss/BossRoleGroups.vue')
-const BossStoreSettings = () => import('@/view/boss/BossStoreSettings.vue')
 const BossOrderSettings = () => import('@/view/boss/BossOrderSettings.vue')
 const BossThresholds    = () => import('@/view/boss/BossThresholds.vue')
 const BossStores        = () => import('@/view/boss/BossStores.vue')
@@ -39,22 +38,21 @@ const routes = [
   { path:'/register', name:'register', component:RegisterView, meta:{ title:'註冊' } },
 
   // 老闆端（左側功能欄一律在 Boss.vue 呈現）
-  {
-    path:'/boss', component:Boss, meta:{ requiresAuth:true, role:'Boss' },
-    children:[
-      { path:'', redirect:'/boss/inventory' },
-      { path:'inventory',      name:'boss-inventory',      component:BossInventory,     meta:{ title:'檢視店面庫存', requiresAuth:true } },
-      { path:'ingredients',    name:'boss-ingredients',    component:BossIngredients,   meta:{ title:'食材資料', requiresAuth:true } },
-      {  path: '/boss/rolegroups',    name: 'boss-rolegroups',   component: BossRoleGroups,    meta: { title: '群組權限', requiresAuth: true }},
-
-      { path:'stores',         name:'boss-stores',         component:BossStores,        meta:{ title:'店面管理', requiresAuth:true } },
-      { path:'thresholds',     name:'boss-thresholds',     component:BossThresholds,    meta:{ title:'警示門檻', requiresAuth:true } },
-      { path:'store-settings', name:'boss-store-settings', component:BossStoreSettings, meta:{ title:'店面設定', requiresAuth:true } },
-      { path:'order-settings', name:'boss-order-settings', component:BossOrderSettings, meta:{ title:'訂單設定', requiresAuth:true } },
-      { path:'invite',         name:'boss-invite',         component:BossInvite,        meta:{ title:'生成邀請碼', requiresAuth:true } },
-      { path:'reports',        name:'boss-reports',        component:BossReports,       meta:{ title:'報表中心', requiresAuth:true } },
-    ]
-  },
+{
+  path:'/boss', component:Boss, meta:{ requiresAuth:true, role:'Boss' },
+  children:[
+    { path:'', redirect:'/boss/inventory' },
+    { path:'inventory',      name:'boss-inventory',      component:BossInventory,   meta:{ title:'檢視店面庫存', requiresAuth:true } },
+    { path:'ingredients',    name:'boss-ingredients',    component:BossIngredients, meta:{ title:'食材資料', requiresAuth:true } },
+    { path:'rolegroups',     name:'boss-rolegroups',     component:BossRoleGroups,  meta:{ title:'群組權限', requiresAuth:true } },
+    { path:'stores',         name:'boss-stores',         component:BossStores,      meta:{ title:'店面管理', requiresAuth:true } },
+    { path:'thresholds',     name:'boss-thresholds',     component:BossThresholds,  meta:{ title:'警示門檻', requiresAuth:true } },
+    // { path:'store-settings', name:'boss-store-settings', component:BossStoreSettings, meta:{ title:'店面設定', requiresAuth:true } }, // ← 移除
+    { path:'order-settings', name:'boss-order-settings', component:BossOrderSettings, meta:{ title:'訂單設定', requiresAuth:true } },
+    { path:'invite',         name:'boss-invite',         component:BossInvite,      meta:{ title:'生成邀請碼', requiresAuth:true } },
+    { path:'reports',        name:'boss-reports',        component:BossReports,     meta:{ title:'報表中心', requiresAuth:true } },
+  ]
+} ,  
 
   // 員工端
   {
@@ -92,7 +90,7 @@ const routes = [
   { path:'/:pathMatch(.*)*', name:'not-found', component:NotFound, meta:{ title:'頁面不存在' } }
 ]
 
-const router = createRouter({ history:createWebHistory(), routes, scrollBehavior:()=>({top:0}) })
+const router = createRouter({ history:createWebHashHistory(), routes, scrollBehavior:()=>({top:0}) })
 
 // 守門：登入 + 角色檢查
 router.beforeEach((to,_from,next)=>{
@@ -130,3 +128,4 @@ export default router
 //npm install
 //npm i sortablejs
 //npm run dev
+

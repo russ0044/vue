@@ -1,7 +1,13 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
-import permPlugin from '@/store/perm'
-import '@/styles/ui.css'      // ← 全域樣式（關鍵）
+import './styles/ui.css'
+import { useSystem } from '@/store/system'
 
-createApp(App).use(router).use(permPlugin).mount('#app')
+const app = createApp(App)
+app.use(router)
+
+// ★ 初始化主題（會把 html[data-theme] 設好）
+useSystem().initSystem()
+
+app.mount('#app')

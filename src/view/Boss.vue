@@ -23,7 +23,8 @@
         <button :class="btnClass('rolegroups')"      @click="go('rolegroups')">群組權限</button>
         <button :class="btnClass('stores')"          @click="go('stores')">店面管理</button>
         <button :class="btnClass('thresholds')"      @click="go('thresholds')">警示門檻</button>
-        <button :class="btnClass('store-settings')"  @click="go('store-settings')">店面設定</button>
+        <!-- 刪除此行：店面設定 -->
+        <!-- <button :class="btnClass('store-settings')"  @click="go('store-settings')">店面設定</button> -->
         <button :class="btnClass('order-settings')"  @click="go('order-settings')">訂單設定</button>
         <button :class="btnClass('invite')"          @click="go('invite')">生成邀請碼</button>
         <button :class="btnClass('reports')"         @click="go('reports')">報表中心</button>
