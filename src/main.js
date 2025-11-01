@@ -1,13 +1,20 @@
 import { createApp } from 'vue'
 import App from './App.vue'
-import router from './router'
-import './styles/ui.css'
-import { useSystem } from '@/store/system'
+import router from './router'            // ✅ 匯入路由
+import './assets/main.css'
 
-const app = createApp(App)
-app.use(router)
+// ---- 主題初始化（可留可改） ----
+const saved = localStorage.getItem('theme')
+const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+const mode = saved ?? (prefersDark ? 'dark' : 'light')
+document.documentElement.classList.toggle('theme-dark', mode === 'dark')
+window.setTheme = (m) => {
+  const isDark = m === 'dark'
+  document.documentElement.classList.toggle('theme-dark', isDark)
+  localStorage.setItem('theme', isDark ? 'dark' : 'light')
+}
+// --------------------------------
 
-// ★ 初始化主題（會把 html[data-theme] 設好）
-useSystem().initSystem()
-
-app.mount('#app')
+createApp(App)
+  .use(router)                           // ✅ 安裝路由
+  .mount('#app')

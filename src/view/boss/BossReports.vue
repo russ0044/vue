@@ -6,7 +6,6 @@
       <div class="spacer"></div>
       <button class="btn ghost small" @click="exportCSV">匯出 CSV</button>
       <button class="btn ghost small" @click="exportPNG">匯出圖表 PNG</button>
-      <button class="icon-btn" title="頁面設定" @click="toast('尚未實作：頁面設定')">⚙</button>
     </header>
 
     <!-- 篩選列 -->
@@ -36,6 +35,11 @@
 
         <button class="btn" @click="reload">重新整理</button>
       </div>
+
+      <p v-if="!hasOrders && !isMock" class="muted small tip">
+        尚未偵測到 Firebase 的 <code>orders</code> 集合，畫面以空資料顯示（不會報錯）。你可在 Firestore 建立集合後，
+        透過「系統設置 → 資料來源」切回 Firebase 立即生效。
+      </p>
     </div>
 
     <!-- KPI -->
@@ -89,187 +93,141 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, defineComponent, watch, h } from 'vue'
+import { read, subscribe } from '@/store/datasource'
 
-/* ================= 圓餅圖子元件（無 JSX） ================= */
+/* ================= 圓餅圖元件（純 SVG） ================= */
 const PieChart = defineComponent({
   name: 'PieChart',
-  props: {
-    data:  { type: Array,  default: () => [] }, // [{name, value, ratio}]
-    title: { type: String, default: '' }
-  },
+  props: { data: Array, title: String },
   setup(props, { expose }) {
     const svgRef = ref(null)
-    const colors = [
-      '#60a5fa','#f472b6','#34d399','#fbbf24','#c084fc',
-      '#f87171','#2dd4bf','#a3e635','#fb7185','#93c5fd'
-    ]
+    const colors = ['#60a5fa','#f472b6','#34d399','#fbbf24','#c084fc','#f87171','#2dd4bf','#a3e635','#fb7185','#93c5fd']
     const polarToXY = (cx,cy,r,angle)=>[ cx + r*Math.cos(angle), cy + r*Math.sin(angle) ]
-
     const build = () => {
-      const svg = svgRef.value
-      if (!svg) return
-      svg.innerHTML = ''
-      const cx=160, cy=160, r=110, hole=60
-      let start = -Math.PI/2
-
-      const g = document.createElementNS('http://www.w3.org/2000/svg','g')
-      svg.appendChild(g)
-
-      props.data.forEach((d,i)=>{
-        const angle = (d.ratio||0)*Math.PI*2
-        const end = start + angle
-        const [x1,y1] = polarToXY(cx,cy,r,start)
-        const [x2,y2] = polarToXY(cx,cy,r,end)
-        const large = angle > Math.PI ? 1 : 0
-        const [ix1,iy1] = polarToXY(cx,cy,hole,end)
-        const [ix2,iy2] = polarToXY(cx,cy,hole,start)
-        const path = document.createElementNS('http://www.w3.org/2000/svg','path')
-        path.setAttribute('d',[
-          `M ${x1} ${y1}`,
-          `A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`,
-          `L ${ix1} ${iy1}`,
-          `A ${hole} ${hole} 0 ${large} 0 ${ix2} ${iy2}`,
-          'Z'
-        ].join(' '))
-        path.setAttribute('fill', colors[i%colors.length])
-        path.setAttribute('stroke','#fff')
-        path.setAttribute('stroke-width','1')
-        g.appendChild(path)
-        start = end
+      const svg = svgRef.value; if (!svg) return; svg.innerHTML = ''
+      const cx=160, cy=160, r=110, hole=60; let start = -Math.PI/2
+      const g = document.createElementNS('http://www.w3.org/2000/svg','g'); svg.appendChild(g)
+      ;(props.data||[]).forEach((d,i)=>{
+        const angle=(d.ratio||0)*Math.PI*2, end=start+angle
+        const [x1,y1]=polarToXY(cx,cy,r,start), [x2,y2]=polarToXY(cx,cy,r,end), large=angle>Math.PI?1:0
+        const [ix1,iy1]=polarToXY(cx,cy,hole,end), [ix2,iy2]=polarToXY(cx,cy,hole,start)
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path')
+        path.setAttribute('d',`M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${hole} ${hole} 0 ${large} 0 ${ix2} ${iy2} Z`)
+        path.setAttribute('fill', colors[i%colors.length]); path.setAttribute('stroke','#fff'); path.setAttribute('stroke-width','1'); g.appendChild(path)
+        start=end
       })
-
-      // 中心標題
       const t = document.createElementNS('http://www.w3.org/2000/svg','text')
-      Object.entries({
-        x:cx, y:cy, 'text-anchor':'middle','dominant-baseline':'middle',
-        fill:'#334155','font-size':'14'
-      }).forEach(([k,v])=>t.setAttribute(k, v))
-      t.textContent = props.title || ''
-      svg.appendChild(t)
+      ;[['x',cx],['y',cy],['text-anchor','middle'],['dominant-baseline','middle'],['fill','#334155'],['font-size','14']]
+        .forEach(([k,v])=>t.setAttribute(k,String(v))); t.textContent=props.title||''; svg.appendChild(t)
 
-      // 圖例
-      const legendX = 320, legendY = 40, step = 26
-      props.data.forEach((d,i)=>{
-        const y = legendY + i*step
-        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect')
-        rect.setAttribute('x',legendX); rect.setAttribute('y',y-10)
-        rect.setAttribute('width',14); rect.setAttribute('height',14); rect.setAttribute('rx',3)
-        rect.setAttribute('fill', colors[i%colors.length])
-        svg.appendChild(rect)
-
-        const txt = document.createElementNS('http://www.w3.org/2000/svg','text')
-        txt.setAttribute('x',legendX+22); txt.setAttribute('y', y+2)
-        txt.setAttribute('fill','#475569'); txt.setAttribute('font-size','13')
-        txt.textContent = `${d.name}：${(d.ratio*100||0).toFixed(1)}%`
-        svg.appendChild(txt)
+      const legendX=320, legendY=40, step=26
+      ;(props.data||[]).forEach((d,i)=>{
+        const y=legendY+i*step
+        const rect=document.createElementNS('http://www.w3.org/2000/svg','rect')
+        rect.setAttribute('x',legendX); rect.setAttribute('y',y-10); rect.setAttribute('width',14); rect.setAttribute('height',14); rect.setAttribute('rx',3)
+        rect.setAttribute('fill', colors[i%colors.length]); svg.appendChild(rect)
+        const txt=document.createElementNS('http://www.w3.org/2000/svg','text')
+        txt.setAttribute('x',legendX+22); txt.setAttribute('y',y+2); txt.setAttribute('fill','#475569'); txt.setAttribute('font-size','13')
+        txt.textContent=`${d.name}：${((d.ratio||0)*100).toFixed(1)}%`; svg.appendChild(txt)
       })
     }
-
     watch(()=>[props.data, props.title], ()=>nextTick(build), { deep:true })
     onMounted(()=> nextTick(build))
 
-    // 匯出 PNG（把 SVG 畫到 Canvas）
     const downloadPNG = async (filename='pie.png')=>{
-      const svg = svgRef.value
-      if (!svg) return
-      const xml  = new XMLSerializer().serializeToString(svg)
-      const blob = new Blob([xml], {type:'image/svg+xml;charset=utf-8'})
-      const url  = URL.createObjectURL(blob)
-
-      const img = new Image()
-      const w=560, h=320
-      const cvs = document.createElement('canvas'); cvs.width=w; cvs.height=h
-      const ctx = cvs.getContext('2d')
-
-      await new Promise(resolve=>{
-        img.onload = ()=>{ ctx.drawImage(img,0,0,w,h); URL.revokeObjectURL(url); resolve() }
-        img.src = url
-      })
-
-      const data = cvs.toDataURL('image/png')
-      const a = document.createElement('a'); a.href=data; a.download=filename; a.click()
+      const svg=svgRef.value; if(!svg) return
+      const xml=new XMLSerializer().serializeToString(svg)
+      const blob=new Blob([xml],{type:'image/svg+xml;charset=utf-8'}), url=URL.createObjectURL(blob)
+      const img=new Image(), w=560, h=320, cvs=document.createElement('canvas'); cvs.width=w; cvs.height=h
+      const ctx=cvs.getContext('2d')
+      await new Promise(res=>{ img.onload=()=>{ ctx.drawImage(img,0,0,w,h); URL.revokeObjectURL(url); res() }; img.src=url })
+      const data=cvs.toDataURL('image/png'); const a=document.createElement('a'); a.href=data; a.download=filename; a.click()
     }
-
     expose({ downloadPNG })
-    // 這裡改用 h()，不使用 JSX
     return () => h('svg', { ref: svgRef, width: 560, height: 320, viewBox: '0 0 560 320' })
   }
 })
 
-/* ================= 假資料層（之後可換 Firebase API） ================= */
-function loadStores () {
-  const raw = localStorage.getItem('rep-stores')
-  if (raw) { try { return JSON.parse(raw) } catch {} }
-  const seed = [
-    { id:'s1', name:'某某餐飲-總店' },
-    { id:'s2', name:'某某餐飲-東門店' },
-    { id:'s3', name:'某某餐飲-西門店' },
-  ]
-  localStorage.setItem('rep-stores', JSON.stringify(seed))
-  return seed
-}
+/* ================= 資料來源（統一 from datasource） ================= */
+const view = reactive(read())
+let unSub = null
+onMounted(() => { unSub = subscribe?.(snap => Object.assign(view, snap)) })
+watch(() => read?.(), v => Object.assign(view, v||{}), { deep:false })
+
+const stores = computed(() => Array.isArray(view?.stores) ? view.stores : [])
+const hasOrders = computed(() => Array.isArray(view?.orders) && view.orders.length > 0)
+const isMock = computed(() => (localStorage.getItem('ds-mode') || 'mock') === 'mock')
+
+/* ================= 分類定義（你可改為從後端帶入） ================= */
 const CATES = [
-  { key:'meat', name:'肉品' },{ key:'veg', name:'蔬菜' },
-  { key:'drink', name:'飲料' },{ key:'staple', name:'主食' },
-  { key:'other', name:'其他' },
+  { key:'meat',   name:'肉品'  },
+  { key:'veg',    name:'蔬菜'  },
+  { key:'drink',  name:'飲料'  },
+  { key:'staple', name:'主食'  },
+  { key:'other',  name:'其他'  },
 ]
-function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min }
-function genSeedOrders(stores){
-  const today=new Date(), days=120, list=[]
-  for(let d=0; d<days; d++){
-    const dt = new Date(today); dt.setDate(today.getDate()-d)
-    const ds = dt.toISOString().slice(0,10)
-    for(const s of stores){
-      const n=rnd(2,6)
-      for(let i=0;i<n;i++){
-        const cate=CATES[rnd(0,CATES.length-1)]
-        const qty=rnd(5,60), price=rnd(20,200)
-        list.push({ id:`${ds}-${s.id}-${i}-${cate.key}`, date:ds, storeId:s.id, cate:cate.key, qty, price })
-      }
-    }
-  }
-  return list
-}
-function loadOrders(stores){
-  const raw = localStorage.getItem('rep-orders')
-  if (raw) { try { return JSON.parse(raw) } catch {} }
-  const seed = genSeedOrders(stores)
-  localStorage.setItem('rep-orders', JSON.stringify(seed))
-  return seed
-}
 
-/* ================= 狀態/計算 ================= */
-const stores = ref([])
-const orders = ref([])
-
-const scope   = ref('all')   // 'all' | 'single'
-const storeId = ref('')
+/* ================= 篩選條件 ================= */
+const scope    = ref('all')   // 'all' | 'single'
+const storeId  = ref('')
 const dateFrom = ref(''), dateTo = ref('')
 
 function setRange(days){
   const to=new Date(), from=new Date(); from.setDate(to.getDate()-days+1)
-  dateFrom.value = from.toISOString().slice(0,10)
-  dateTo.value   = to.toISOString().slice(0,10)
+  dateFrom.value = toISO(from); dateTo.value = toISO(to)
 }
-onMounted(()=>{
-  stores.value = loadStores()
-  orders.value = loadOrders(stores.value)
-  setRange(30)
-  storeId.value = stores.value[0]?.id || ''
+onMounted(()=>{ setRange(30); storeId.value = stores.value[0]?.id || '' })
+watch(stores, (nv)=>{ if(nv?.length && !nv.some(s=>s.id===storeId.value)) storeId.value = nv[0].id })
+
+/* ================= 訂單來源：優先用 datasource.orders；否則根據 inventory 生成 mock（可重現） ================= */
+const orders = computed(() => {
+  if (hasOrders.value) return view.orders
+  return genOrdersFromInventory(view.inventory || [], stores.value, dateFrom.value, dateTo.value)
 })
 
+/* 產生可重現亂數（同輸入得到同輸出） */
+function hash32(str){ let h=2166136261>>>0; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=(h*16777619)>>>0 } return h>>>0 }
+function rng(seed){ let s=seed>>>0; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/0xffffffff } }
+
+/* 根據 inventory 生成 mock 訂單（不寫 localStorage） */
+function genOrdersFromInventory(inventory, storeList, from, to){
+  if (!inventory?.length || !storeList?.length || !from || !to) return []
+  const f=new Date(from), t=new Date(to), out=[]
+  for(let ts=f.getTime(); ts<=t.getTime(); ts+=86400000){
+    const ds = toISO(new Date(ts))
+    for(const s of storeList){
+      // 為每個（店面+日期）創建穩定的隨機序列
+      const rnd = rng(hash32(s.id+'|'+ds))
+      // 每天 3~6 筆
+      const n = 3 + Math.floor(rnd()*4)
+      for(let i=0;i<n;i++){
+        const pick = inventory[Math.floor(rnd()*inventory.length)]
+        const cate = CATES[Math.floor(rnd()*CATES.length)]
+        const qty  = 5 + Math.floor(rnd()*55)
+        const price= 20 + Math.floor(rnd()*180)
+        out.push({ id:`${ds}-${s.id}-${i}`, date:ds, storeId:s.id, cate:cate.key, sku:pick?.sku, qty, price })
+      }
+    }
+  }
+  return out
+}
+
+function toISO(d){ const z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}` }
+
+/* ================= 篩選後資料 ================= */
 const filtered = computed(()=>{
   const f=dateFrom.value||'0000-00-00', t=dateTo.value||'9999-12-31'
-  return orders.value.filter(o=>{
+  return (orders.value||[]).filter(o=>{
     if (!(o.date>=f && o.date<=t)) return false
     if (scope.value==='single' && storeId.value) return o.storeId===storeId.value
     return true
   })
 })
 
+/* KPI */
 const kpi = computed(()=>{
   const set=filtered.value
-  const orderCount=new Set(set.map(o=>o.date+o.storeId)).size
+  const orderCount=new Set(set.map(o=>o.date+'|'+o.storeId)).size
   const itemKinds =new Set(set.map(o=>o.cate)).size
   const qtyTotal  =set.reduce((s,o)=>s+o.qty,0)
   const revenue   =set.reduce((s,o)=>s+o.qty*o.price,0)
@@ -277,6 +235,7 @@ const kpi = computed(()=>{
   return { orderCount,itemKinds,qtyTotal,revenue,avgPrice }
 })
 
+/* 圓餅圖 & 表格 */
 const pieMode = ref('revenue')
 const pieData = computed(()=>{
   const base = CATES.map(c=>({ key:c.key, name:c.name, value:0 }))
@@ -284,54 +243,52 @@ const pieData = computed(()=>{
     const i=base.findIndex(b=>b.key===o.cate)
     if(i>=0) base[i].value += (pieMode.value==='revenue'? o.qty*o.price : o.qty)
   }
-  const total=base.reduce((s,x)=>s+x.value,0)
-  return base.map(x=>({ ...x, ratio: total? x.value/total : 0 }))
+  const total=base.reduce((s,x)=>s+x.value,0) || 1
+  return base.map(x=>({ ...x, ratio: x.value/total }))
 })
 
 const tableRows = computed(()=>{
   const qtyByCate = k => filtered.value.filter(o=>o.cate===k).reduce((s,o)=>s+o.qty,0)
   const revenueByCate = k => filtered.value.filter(o=>o.cate===k).reduce((s,o)=>s+o.qty*o.price,0)
   return pieData.value
-    .filter(r=>r.value>0)
-    .sort((a,b)=>b.value-a.value)
+    .filter(r=>r.ratio>0)
+    .sort((a,b)=>b.ratio-a.ratio)
     .map(r=>({ key:r.key, name:r.name, qty:qtyByCate(r.key), revenue:revenueByCate(r.key), ratio:r.ratio }))
 })
 
-function reload(){ nextTick(()=>{}) }
+function reload(){ /* 使用 computed/subscribe，這裡保持即時；預留按鈕體驗 */ }
 
-/* 匯出 CSV / PNG */
+/* 匯出 */
+function escapeCSV(v){ const s=String(v??''); return /[,"\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s }
+function formatMoney(n){ return (n||0).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',') }
+
 function exportCSV(){
   const rows = [
+    ['資料源', isMock.value ? '假資料（seed）' : 'Firebase'],
     ['店面範圍', scope.value==='all' ? '全部店面' : (stores.value.find(s=>s.id===storeId.value)?.name || '—')],
     ['日期區間', `${dateFrom.value||'—'} ~ ${dateTo.value||'—'}`],
     [],
     ['分類','數量','營收','占比'],
     ...tableRows.value.map(r=>[ r.name, r.qty, r.revenue, (r.ratio*100).toFixed(1)+'%' ]),
-    ['合計', kpi.value.qtyTotal, kpi.value.revenue, '100%']
+    tableRows.value.length ? ['合計', kpi.value.qtyTotal, kpi.value.revenue, '100%'] : []
   ]
-  const csv = rows.map(r => r.map(escapeCSV).join(',')).join('\n')
+  const csv = rows.filter(r=>r.length).map(r => r.map(escapeCSV).join(',')).join('\n')
   const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a'); a.href=url; a.download='report.csv'; a.click()
-  URL.revokeObjectURL(url)
+  const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='report.csv'; a.click(); URL.revokeObjectURL(url)
 }
-function escapeCSV(v){ const s=String(v??''); return /[,"\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s }
 
 const pieRef = ref(null)
 async function exportPNG(){ await pieRef.value?.downloadPNG?.(`report-pie-${pieMode.value}.png`) }
 
-/* UI 小工具 */
-function formatMoney(n){ return (n||0).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',') }
+/* UI */
 const toastMsg = ref(''); function toast(m){ toastMsg.value=m; setTimeout(()=>toastMsg.value='',1400) }
 </script>
 
 <style scoped>
-/* 命名空間 rep-；不使用 100vh，避免影響你的左側總功能欄 */
+/* 版面骨架 */
 .rep-page{ padding:16px; background:#f6f8fc; min-height:100%; height:auto; overflow:visible; }
 .rep-header{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 .title{ font-size:20px; font-weight:800; }
-.icon-btn{ border:none; background:transparent; cursor:pointer; font-size:18px; opacity:.85; }
-.icon-btn:hover{ opacity:1; }
 .spacer{ flex:1; }
 
 /* 控件 */
@@ -340,7 +297,7 @@ const toastMsg = ref(''); function toast(m){ toastMsg.value=m; setTimeout(()=>to
 .btn.ghost{ border-color:#e6eaf2; color:#334155; background:#fff }
 .btn.small{ padding:6px 10px }
 .card{ background:#fff; border:1px solid #e6eaf2; border-radius:16px; padding:12px; min-width:0; }
-.card-lite{ background:#fff; border:1px dashed #e6eaf2; border-radius:12px; padding:10px; }
+.card-lite{ background:#fff; border:1px dashed #e6eaf2; border-radius:12px; padding:12px; }
 .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
 .input{ border:1px solid #e6eaf2; border-radius:10px; padding:8px 10px; outline:none; background:#fff; }
 .input:focus{ border-color:#9ec5ff; box-shadow:0 0 0 3px rgba(99,162,255,.15) }
@@ -351,6 +308,7 @@ const toastMsg = ref(''); function toast(m){ toastMsg.value=m; setTimeout(()=>to
 .segbtn{ border:1px solid #e6eaf2; background:#fff; border-radius:10px; padding:6px 10px; cursor:pointer }
 .segbtn.active{ background:#e6f4ff; border-color:#cfe9ff }
 .w200{ width:200px } .w220{ width:220px }
+.tip{ margin:8px 0 0; }
 
 /* KPI */
 .rep-kpi{ display:grid; grid-template-columns:repeat(5, minmax(120px,1fr)); gap:10px; margin:10px 0 12px }

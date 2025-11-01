@@ -3,299 +3,294 @@
     <header class="inv-header">
       <div class="title">食材資料</div>
       <div class="spacer"></div>
-      <button class="icon-btn" title="頁面設定" @click="toast('尚未實作：頁面設定')">⚙</button>
     </header>
 
-    <div class="inv-tabs">
-      <button :class="['tab', tab==='status' && 'active']" @click="switchTab('status')">食材狀況設定</button>
-      <button :class="['tab', tab==='manage' && 'active']" @click="switchTab('manage')">食材管理</button>
-      <button :class="['tab', tab==='tags'   && 'active']" @click="switchTab('tags')">標籤管理</button>
-      <div class="spacer"></div>
-      <button class="btn ghost small" @click="exportJSON">匯出 JSON</button>
-      <label class="btn ghost small file-btn">
-        匯入 JSON
-        <input type="file" accept="application/json" @change="importJSON">
-      </label>
+    <!-- 載入/錯誤狀態 -->
+    <div v-if="!ready" class="card muted" style="padding:12px">載入中…</div>
+    <div v-else-if="errorMsg" class="card" style="padding:12px;color:#b91c1c">
+      發生錯誤：{{ errorMsg }}
     </div>
 
-    <div class="inv-grid">
-      <!-- 左欄（樣式與結構在三個分頁完全一致） -->
-      <aside class="inv-side" :class="{open: drawerOpen}">
-        <div class="side-store">
-          <div class="avatar">🥗</div>
-          <div class="meta">
-            <div class="name">{{ store.name }}</div>
-            <div class="muted">ID：{{ store.id }}</div>
-          </div>
-          <button class="icon-btn" title="店家設定" @click="toast('尚未實作：店家設定')">⚙</button>
-        </div>
+    <template v-else>
+      <div class="inv-tabs">
+        <div class="spacer"></div>
+        <button :class="['tab', tab==='status' && 'active']" @click="switchTab('status')">食材狀況設定</button>
+        <button :class="['tab', tab==='manage' && 'active']" @click="switchTab('manage')">食材管理</button>
+        <button :class="['tab', tab==='tags'   && 'active']" @click="switchTab('tags')">標籤管理</button>
+      </div>
 
-        <!-- 統一的工具列：搜尋列 → 動作列 → 標籤列（高度一致） -->
-        <div class="side-tools">
-          <!-- 搜尋列 -->
-          <div class="search">
-            <span>{{ tab==='tags' ? '🔖' : '🔎' }}</span>
-            <input class="input"
-                   :placeholder="sideSearchPlaceholder"
-                   v-model="sideSearchModel">
-          </div>
+      <div class="inv-grid">
+        <!-- 左側 -->
+        <aside class="inv-side" :class="{open: drawerOpen}">
+          <div class="side-tools">
+            <div class="search">
+              <span>{{ tab==='tags' ? '🔖' : '🔎' }}</span>
+              <input class="input" :placeholder="sideSearchPlaceholder" v-model="sideSearchModel">
+            </div>
 
-          <!-- 動作列（統一高度，分頁帶入對應動作；沒動作就留空位） -->
-          <div class="side-actions">
-            <template v-if="tab==='manage'">
-              <button class="btn primary w-full" @click="createNew()">＋ 新增食材</button>
-            </template>
+            <div class="side-actions">
+              <template v-if="tab==='manage'">
+                <button class="btn primary w-full" @click="createNew()">＋ 新增食材</button>
+              </template>
+              <template v-else-if="tab==='tags'">
+                <input v-model.trim="newTagName" class="input grow" placeholder="輸入標籤名稱">
+                <button class="btn primary" :disabled="!newTagName" @click="createTag()">＋ 新增</button>
+              </template>
+              <template v-else>
+                <div class="action-spacer"></div>
+              </template>
+            </div>
 
-            <template v-else-if="tab==='tags'">
-              <input v-model.trim="newTagName" class="input grow" placeholder="輸入標籤名稱">
-              <button class="btn primary" :disabled="!newTagName" @click="createTag()">＋ 新增</button>
-            </template>
-
-            <template v-else>
-              <div class="action-spacer"></div>
-            </template>
-          </div>
-
-          <!-- 標籤 Chips（統一顯示；邏輯依分頁作用） -->
-          <div class="chips">
-            <button
-              v-for="t in db.tags"
-              :key="t.id"
-              class="chip"
-              :class="{on: isChipOn(t.id)}"
-              @click="onChipClick(t.id)"
-            >#{{ t.name }}</button>
-          </div>
-        </div>
-
-        <!-- 左欄清單（樣式一致的卡片項） -->
-        <div class="side-list" v-if="tab==='manage'">
-          <div
-            v-for="it in filteredForList"
-            :key="it.id"
-            class="side-item"
-            :class="{active: it.id===selectedId}"
-            @click="selectItem(it.id)"
-          >
-            <div class="thumb sm" :style="{ backgroundImage: `url(${it.image || placeholder})` }"></div>
-            <div class="grow">
-              <div class="name"><strong>{{ it.name }}</strong></div>
-              <div class="muted small">單位：{{ it.unit }}｜狀態：{{ statusText(statusForScope(it)) }}</div>
+            <div class="chips">
+              <button
+                v-for="t in db.tags"
+                :key="t.id"
+                class="chip"
+                :class="{on: isChipOn(t.id)}"
+                @click="onChipClick(t.id)"
+              >#{{ t.name }}</button>
             </div>
           </div>
-          <p v-if="!filteredForList.length" class="muted center">沒有符合的食材</p>
-        </div>
 
-        <div class="side-list" v-else-if="tab==='tags'" ref="tagListRef">
-          <div class="tag-row" v-for="t in filteredTags" :key="t.id" :data-id="t.id">
-            <span class="grip">⠿</span>
-            <div class="grow">#{{ t.name }}</div>
-            <div class="muted small">使用 {{ tagUsageCount(t.id) }}</div>
-            <button class="link small" @click="renameTag(t)">重新命名</button>
-            <button class="link danger small" @click="removeTag(t)">刪除</button>
-          </div>
-          <p v-if="!filteredTags.length" class="muted center">沒有標籤</p>
-        </div>
-
-        <div class="side-list" v-else>
-          <div
-            v-for="it in filteredForStatus"
-            :key="it.id"
-            class="side-item"
-            @click="scrollToRow(it.id)"
-          >
-            <div class="thumb sm" :style="{ backgroundImage: `url(${it.image || placeholder})` }"></div>
-            <div class="grow">
-              <div class="name"><strong>{{ it.name }}</strong></div>
-              <div class="muted small">狀態：{{ statusText(statusForScope(it)) }}</div>
-            </div>
-          </div>
-          <p v-if="!filteredForStatus.length" class="muted center">查無資料</p>
-        </div>
-      </aside>
-
-      <transition name="fade"><div v-if="drawerOpen" class="backdrop" @click="drawerOpen=false"></div></transition>
-
-      <!-- 右欄內容 -->
-      <main class="inv-main card">
-        <!-- 狀況設定（全門市/單店覆寫） -->
-        <template v-if="tab==='status'">
-          <div class="main-head">
-            <div class="row gap">
-              <div class="seg">
-                <button :class="['segbtn', scope==='global' && 'active']" @click="scope='global'">全門市統一</button>
-                <button :class="['segbtn', scope==='store' && 'active']"  @click="scope='store'">單店覆寫</button>
+          <!-- 左欄清單 -->
+          <div class="side-list" v-if="tab==='manage'">
+            <div
+              v-for="it in filteredForList"
+              :key="it.id"
+              class="side-item"
+              :class="{active: it.id===selectedId}"
+              @click="selectItem(it.id)"
+            >
+              <div class="thumb sm" :style="{ backgroundImage: `url(${it.image || placeholder})` }"></div>
+              <div class="grow">
+                <div class="name"><strong>{{ it.name }}</strong></div>
+                <div class="muted small">單位：{{ it.unit }}｜狀態：{{ statusText(statusForScope(it)) }}</div>
               </div>
-              <select v-if="scope==='store'" v-model="selectedStoreId" class="input">
-                <option v-for="s in db.stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-              </select>
             </div>
-            <div class="spacer"></div>
-            <div class="row gap" v-if="checkedIds.size">
-              <div>已選 {{ checkedIds.size }} 項</div>
-              <button class="btn small" @click="setBatchStatus('available')">設為可用</button>
-              <button class="btn small warn" @click="setBatchStatus('low')">設為缺貨</button>
-              <button class="btn small danger" @click="setBatchStatus('disabled')">設為停售</button>
-              <button class="btn ghost small" @click="checkedIds.clear()">清除選取</button>
-            </div>
+            <p v-if="!filteredForList.length" class="muted center">沒有符合的食材</p>
           </div>
 
-          <div class="status-list" ref="statusListRef">
+          <div class="side-list" v-else-if="tab==='tags'" ref="tagListRef">
+            <div class="tag-row" v-for="t in filteredTags" :key="t.id" :data-id="t.id">
+              <span class="grip">⠿</span>
+              <div class="grow">#{{ t.name }}</div>
+              <div class="muted small">使用 {{ tagUsageCount(t.id) }}</div>
+              <button class="link small" @click="renameTag(t)">重新命名</button>
+              <button class="link danger small" @click="removeTag(t)">刪除</button>
+            </div>
+            <p v-if="!filteredTags.length" class="muted center">沒有標籤</p>
+          </div>
+
+          <div class="side-list" v-else>
             <div
               v-for="it in filteredForStatus"
               :key="it.id"
-              class="status-row"
-              :id="'row-'+it.id"
+              class="side-item"
+              @click="scrollToRow(it.id)"
             >
-              <label class="ck">
-                <input type="checkbox" :value="it.id" v-model="checkedIdsArr">
-                <span></span>
-              </label>
-
-              <div class="thumb" :style="{ backgroundImage: `url(${it.image || placeholder})` }"></div>
-
-              <!-- ✅ 切換按鈕移到左側、緊貼縮圖 -->
-              <div class="right-actions">
-                <button class="state-btn" :class="statusForScope(it)" @click="cycleStatusScoped(it)">
-                  {{ statusText(statusForScope(it)) }}
-                </button>
-                <button v-if="scope==='store' && isOverridden(it)" class="btn ghost small" @click="clearOverride(it)">清除覆寫</button>
-              </div>
-
-
+              <div class="thumb sm" :style="{ backgroundImage: `url(${it.image || placeholder})` }"></div>
               <div class="grow">
-                <div class="name"><strong>{{ it.name }}</strong> <span class="muted">（{{ it.code || '無代碼' }}）</span></div>
-                <div class="muted small">
-                  <span v-for="tid in it.tags" :key="tid" class="pill">#{{ tagName(tid) }}</span>
-                  <span>｜單位：{{ it.unit }}｜安全庫存：{{ it.safeStock ?? '—' }}</span>
-                  <span v-if="scope==='store' && isOverridden(it)" class="over-chip">已覆寫</span>
-                </div>
+                <div class="name"><strong>{{ it.name }}</strong></div>
+                <div class="muted small">狀態：{{ statusText(statusForScope(it)) }}</div>
               </div>
             </div>
+            <p v-if="!filteredForStatus.length" class="muted center">查無資料</p>
           </div>
-        </template>
+        </aside>
 
-        <!-- 食材管理（右側編輯器） -->
-        <template v-else-if="tab==='manage'">
-          <div class="main-head">
-            <div class="left">
-              <button class="icon-btn only-mobile" title="清單" @click="drawerOpen=true">☰</button>
-              <div class="title">{{ editing.id ? '編輯食材' : '新增食材' }}</div>
-            </div>
-            <div class="spacer"></div>
-            <div class="row gap">
-              <button v-if="editing.id" class="btn ghost" @click="duplicateItem()">複製</button>
-              <button v-if="editing.id" class="btn danger" @click="removeItem()">刪除</button>
-              <button class="btn" @click="revertEditing()">還原</button>
-              <button class="btn primary" :disabled="!canSave" @click="saveItem()">儲存</button>
-            </div>
-          </div>
+        <transition name="fade"><div v-if="drawerOpen" class="backdrop" @click="drawerOpen=false"></div></transition>
 
-          <div class="form-cols">
-            <div class="uploader">
-              <div class="thumb xl" :style="{ backgroundImage: `url(${editing.image || placeholder})` }"></div>
-              <label class="btn ghost small mt-8">
-                上傳圖片
-                <input type="file" accept="image/*" @change="pickImage">
-              </label>
-              <button v-if="editing.image" class="btn ghost small" @click="editing.image=''">移除圖片</button>
-            </div>
-
-            <div class="fields">
+        <!-- 右側 -->
+        <main class="inv-main card">
+          <!-- 狀況設定 -->
+          <template v-if="tab==='status'">
+            <div class="main-head">
               <div class="row gap">
-                <label class="label">食材名稱</label>
-                <input v-model.trim="editing.name" class="input grow" placeholder="請輸入名稱">
-              </div>
-              <div class="row gap">
-                <label class="label">食材代碼</label>
-                <input v-model.trim="editing.code" class="input grow" placeholder="選填：條碼/自訂代碼">
-              </div>
-              <div class="row gap">
-                <label class="label">單位</label>
-                <select v-model="editing.unit" class="input">
-                  <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
-                </select>
-                <label class="label">效期(天)</label>
-                <input v-model.number="editing.shelfLife" type="number" min="0" class="input w120" placeholder="0=不追蹤">
-              </div>
-              <div class="row gap">
-                <label class="label">供應商</label>
-                <input v-model.trim="editing.supplier" class="input grow" placeholder="輸入供應商名稱">
-              </div>
-              <div class="row gap">
-                <label class="label">安全庫存</label>
-                <input v-model.number="editing.safeStock" type="number" min="0" class="input w160" placeholder="例如 10">
-                <label class="chk ml12">
-                  <input type="checkbox" v-model="editing.trackExpiry"><span></span>
-                </label>
-                <span class="muted">啟用批號／效期追蹤</span>
-              </div>
-              <div class="row gap">
-                <label class="label">成本</label>
-                <input v-model.number="editing.cost" type="number" min="0" step="0.01" class="input w160">
-                <label class="label">售價</label>
-                <input v-model.number="editing.price" type="number" min="0" step="0.01" class="input w160">
-              </div>
-
-              <div class="row gap">
-                <label class="label">狀態</label>
                 <div class="seg">
-                  <button :class="['segbtn', scope==='global' && 'active']" @click="scope='global'">全門市</button>
-                  <button :class="['segbtn', scope==='store' && 'active']"  @click="scope='store'">單店</button>
+                  <button :class="['segbtn', scope==='global' && 'active']" @click="scope='global'">全門市統一</button>
+                  <button :class="['segbtn', scope==='store' && 'active']"  @click="scope='store'">單店覆寫</button>
                 </div>
                 <select v-if="scope==='store'" v-model="selectedStoreId" class="input">
                   <option v-for="s in db.stores" :key="s.id" :value="s.id">{{ s.name }}</option>
                 </select>
-                <button class="state-btn" :class="statusForScope(editing)" @click="cycleStatusScoped(editing)">
-                  {{ statusText(statusForScope(editing)) }}
-                </button>
-                <button v-if="scope==='store' && isOverridden(editing)" class="btn ghost small" @click="clearOverride(editing)">清除覆寫</button>
               </div>
+              <div class="spacer"></div>
+              <div class="row gap" v-if="checkedIds.size">
+                <div>已選 {{ checkedIds.size }} 項</div>
+                <button class="btn small" @click="setBatchStatus('available')">設為可用</button>
+                <button class="btn small warn" @click="setBatchStatus('low')">設為缺貨</button>
+                <button class="btn small danger" @click="setBatchStatus('disabled')">設為停售</button>
+                <button class="btn ghost small" @click="checkedIds.clear()">清除選取</button>
+              </div>
+            </div>
 
-              <div class="row">
-                <label class="label">標籤</label>
-                <div class="grow tagdock">
-                  <div class="taglist">
-                    <span v-for="tid in editing.tags" :key="tid" class="pill">
-                      #{{ tagName(tid) }}
-                      <button class="x" @click="removeTagFromEditing(tid)">✕</button>
-                    </span>
-                    <span v-if="!editing.tags.length" class="muted">尚未指定標籤</span>
-                  </div>
-                  <div class="row gap">
-                    <select v-model="tagToAdd" class="input w200">
-                      <option disabled value="">選擇標籤</option>
-                      <option v-for="t in db.tags" :key="t.id" :value="t.id">#{{ t.name }}</option>
-                    </select>
-                    <button class="btn small" :disabled="!tagToAdd" @click="addTagToEditing()">加入</button>
-                    <input v-model.trim="newTagName" class="input w200" placeholder="新增標籤名稱">
-                    <button class="btn ghost small" :disabled="!newTagName" @click="quickCreateTag()">＋ 新增標籤</button>
+            <div class="status-list" ref="statusListRef">
+              <div
+                v-for="it in filteredForStatus"
+                :key="it.id"
+                class="status-row"
+                :id="'row-'+it.id"
+              >
+                <label class="ck">
+                  <input type="checkbox" :value="it.id" v-model="checkedIdsArr">
+                  <span></span>
+                </label>
+
+                <div class="thumb" :style="{ backgroundImage: `url(${it.image || placeholder})` }"></div>
+
+                <div class="grow">
+                  <div class="name"><strong>{{ it.name }}</strong> <span class="muted">（{{ it.code || '無代碼' }}）</span></div>
+                  <div class="muted small">
+                    <span v-for="tid in it.tags" :key="tid" class="pill">#{{ tagName(tid) }}</span>
+                    <span>｜單位：{{ it.unit }}｜安全庫存：{{ it.safeStock ?? '—' }}</span>
+                    <span v-if="scope==='store' && isOverridden(it)" class="over-chip">已覆寫</span>
                   </div>
                 </div>
+
+                <div class="right-actions">
+                  <button class="state-btn" :class="statusForScope(it)" @click="cycleStatusScoped(it)">
+                    {{ statusText(statusForScope(it)) }}
+                  </button>
+                  <button v-if="scope==='store' && isOverridden(it)" class="btn ghost small" @click="clearOverride(it)">清除覆寫</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- 食材管理 -->
+          <template v-else-if="tab==='manage'">
+            <div class="main-head">
+              <div class="left">
+                <button class="icon-btn only-mobile" title="清單" @click="drawerOpen=true">☰</button>
+                <div class="title">{{ editing.id ? '編輯食材' : '新增食材' }}</div>
+              </div>
+              <div class="spacer"></div>
+              <div class="row gap">
+                <button v-if="editing.id" class="btn ghost" @click="duplicateItem()">複製</button>
+                <button v-if="editing.id" class="btn danger" @click="removeItem()">刪除</button>
+                <button class="btn" @click="revertEditing()">還原</button>
+                <button class="btn primary" :disabled="!canSave" @click="saveItem()">儲存</button>
+              </div>
+            </div>
+
+            <div class="form-cols">
+              <div class="uploader">
+                <div class="thumb xl" :style="{ backgroundImage: `url(${editing.image || placeholder})` }"></div>
+                <label class="btn ghost small mt-8">
+                  上傳圖片
+                  <input type="file" accept="image/*" @change="pickImage">
+                </label>
+                <button v-if="editing.image" class="btn ghost small" @click="editing.image=''">移除圖片</button>
               </div>
 
+              <div class="fields">
+                <div class="row gap">
+                  <label class="label">食材名稱</label>
+                  <input v-model.trim="editing.name" class="input grow" placeholder="請輸入名稱">
+                </div>
+                <div class="row gap">
+                  <label class="label">食材代碼</label>
+                  <input v-model.trim="editing.code" class="input grow" placeholder="選填：條碼/自訂代碼">
+                </div>
+                <div class="row gap">
+                  <label class="label">單位</label>
+                  <select v-model="editing.unit" class="input">
+                    <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
+                  </select>
+                  <label class="label">效期(天)</label>
+                  <input v-model.number="editing.shelfLife" type="number" min="0" class="input w120" placeholder="0=不追蹤">
+                </div>
+                <div class="row gap">
+                  <label class="label">供應商</label>
+                  <input v-model.trim="editing.supplier" class="input grow" placeholder="輸入供應商名稱">
+                </div>
+                <div class="row gap">
+                  <label class="label">安全庫存</label>
+                  <input v-model.number="editing.safeStock" type="number" min="0" class="input w160" placeholder="例如 10">
+                  <label class="chk ml12">
+                    <input type="checkbox" v-model="editing.trackExpiry"><span></span>
+                  </label>
+                  <span class="muted">啟用批號／效期追蹤</span>
+                </div>
+                <div class="row gap">
+                  <label class="label">成本</label>
+                  <input v-model.number="editing.cost" type="number" min="0" step="0.01" class="input w160">
+                  <label class="label">售價</label>
+                  <input v-model.number="editing.price" type="number" min="0" step="0.01" class="input w160">
+                </div>
+
+                <div class="row gap">
+                  <label class="label">狀態</label>
+                  <div class="seg">
+                    <button :class="['segbtn', scope==='global' && 'active']" @click="scope='global'">全門市</button>
+                    <button :class="['segbtn', scope==='store' && 'active']"  @click="scope='store'">單店</button>
+                  </div>
+                  <select v-if="scope==='store'" v-model="selectedStoreId" class="input">
+                    <option v-for="s in db.stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+                  </select>
+                  <button class="state-btn" :class="statusForScope(editing)" @click="cycleStatusScoped(editing)">
+                    {{ statusText(statusForScope(editing)) }}
+                  </button>
+                  <button v-if="scope==='store' && isOverridden(editing)" class="btn ghost small" @click="clearOverride(editing)">清除覆寫</button>
+                </div>
+
+                <div class="row">
+                  <label class="label">標籤</label>
+                  <div class="grow tagdock">
+                    <div class="taglist">
+                      <span v-for="tid in editing.tags" :key="tid" class="pill">
+                        #{{ tagName(tid) }}
+                        <button class="x" @click="removeTagFromEditing(tid)">✕</button>
+                      </span>
+                      <span v-if="!editing.tags.length" class="muted">尚未指定標籤</span>
+                    </div>
+                    <div class="row gap">
+                      <select v-model="tagToAdd" class="input w200">
+                        <option disabled value="">選擇標籤</option>
+                        <option v-for="t in db.tags" :key="t.id" :value="t.id">#{{ t.name }}</option>
+                      </select>
+                      <button class="btn small" :disabled="!tagToAdd" @click="addTagToEditing()">加入</button>
+                      <input v-model.trim="newTagName" class="input w200" placeholder="新增標籤名稱">
+                      <button class="btn ghost small" :disabled="!newTagName" @click="quickCreateTag()">＋ 新增標籤</button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
             </div>
-          </div>
-        </template>
+          </template>
 
-        <!-- 標籤管理（右側說明） -->
-        <template v-else>
-          <h3 class="h3">標籤管理</h3>
-          <p class="muted">在左側可新增／重新命名／刪除標籤；編輯食材時可直接加入或新建標籤。</p>
-        </template>
-      </main>
-    </div>
+          <!-- 標籤管理說明 -->
+          <template v-else>
+            <h3 class="h3">標籤管理</h3>
+            <p class="muted">在左側可新增／重新命名／刪除標籤；編輯食材時可直接加入或新建標籤。</p>
+          </template>
+        </main>
+      </div>
 
-    <transition name="fade"><div v-if="toastMsg" class="toast">{{ toastMsg }}</div></transition>
+      <div class="bottom card">
+        <div class="row gap">
+          <button class="btn ghost" @click="exportJSON">匯出 JSON</button>
+          <label class="btn ghost file-btn">
+            匯入 JSON
+            <input type="file" accept="application/json" @change="importJSON">
+          </label>
+        </div>
+      </div>
+
+      <transition name="fade"><div v-if="toastMsg" class="toast">{{ toastMsg }}</div></transition>
+    </template>
   </section>
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted, nextTick } from 'vue'
+import { reactive, ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import Sortable from 'sortablejs'
+import * as ds from '@/store/datasource'
+
 defineOptions({ name: 'BossIngredients' })
 
-/* ===== 常數 / 假圖 ===== */
+/* ---------- UI 常數 ---------- */
 const UNITS = ['個','份','公斤','公克','公升','毫升','盒','包','罐','瓶','條']
 const placeholder = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200">
@@ -303,60 +298,130 @@ const placeholder = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
       fill="#94a3b8" font-family="sans-serif" font-size="14">No Image</text>
   </svg>`)
+const FALLBACK_KEY = 'boss-ingredients-fallback'
 
-/* ===== 分頁 / 抽屜 ===== */
+/* ---------- 載入狀態 ---------- */
+const ready = ref(false)
+const errorMsg = ref('')
+
+/* ---------- 來源訂閱 ---------- */
+const snap = reactive(ds.read() || {})
+let unsub = null
+
+function ensureContainers(o){
+  o.stores ||= []
+  o.inventory ||= []
+  o.settings ||= { store:{} }
+  o.settings.store ||= {}
+}
+
+onMounted(() => {
+  try {
+    ensureContainers(snap)
+    if (typeof ds.subscribe === 'function') {
+      unsub = ds.subscribe((s) => {
+        Object.assign(snap, s || {})
+        ensureContainers(snap)
+        loadDataFromSource()
+      })
+    }
+    loadDataFromSource()
+    ready.value = true
+  } catch (e) {
+    errorMsg.value = String(e?.message || e)
+  }
+})
+onBeforeUnmount(() => unsub?.())
+
+/* ---------- 主資料（ingredients/tags） ---------- */
+const db = reactive({ stores: [], ingredients: [], tags: [] })
+const toastMsg = ref(''); function toast(m){ toastMsg.value=m; setTimeout(()=>toastMsg.value='',1400) }
+function rid(){ try{ return crypto.randomUUID() } catch { return 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8) } }
+
+function loadDataFromSource(){
+  // 更新 stores
+  db.stores = Array.isArray(snap.stores) ? [...snap.stores] : []
+
+  // 1) 資料來源直接提供 ingredients/tags
+  if (Array.isArray(snap.ingredients) && Array.isArray(snap.tags)) {
+    db.ingredients = JSON.parse(JSON.stringify(snap.ingredients))
+    db.tags        = JSON.parse(JSON.stringify(snap.tags))
+    localStorage.removeItem(FALLBACK_KEY)
+    return
+  }
+
+  // 2) 讀 fallback
+  const raw = localStorage.getItem(FALLBACK_KEY)
+  if (raw) {
+    try {
+      const obj = JSON.parse(raw)
+      db.ingredients = Array.isArray(obj.ingredients) ? obj.ingredients : []
+      db.tags        = Array.isArray(obj.tags) ? obj.tags : []
+      return
+    } catch { /* 壞資料則忽略 */ }
+  }
+
+  // 3) 由 inventory 推導
+  const seen = new Map()
+  const tagFresh = { id: rid(), name: '生鮮' }
+  const tagDry   = { id: rid(), name: '乾貨' }
+  const tagPack  = { id: rid(), name: '包材' }
+
+  for (const i of (snap.inventory || [])) {
+    const sku = i?.sku || i?.code || i?.name
+    if (!sku || seen.has(sku)) continue
+    seen.set(sku, {
+      id: rid(),
+      code: sku,
+      name: i?.name || sku,
+      unit: i?.unit || '件',
+      shelfLife: 0,
+      supplier: '',
+      safeStock: 0,
+      trackExpiry: !!i?.exp,
+      cost: 0, price: 0,
+      statusGlobal: 'available',
+      statusByStore: {},
+      tags: [ (i?.unit?.includes('瓶') || i?.unit?.includes('罐') || i?.unit?.includes('盒')) ? tagPack.id :
+              (i?.exp ? tagFresh.id : tagDry.id) ],
+      image: ''
+    })
+  }
+  db.ingredients = Array.from(seen.values())
+  db.tags = [tagFresh, tagDry, tagPack]
+  saveFallback()
+}
+
+function saveFallback(){
+  try {
+    localStorage.setItem(FALLBACK_KEY, JSON.stringify({ ingredients: db.ingredients, tags: db.tags }))
+  } catch {}
+}
+
+/* ---------- 後端 CRUD（若無則寫入 fallback） ---------- */
+async function upsertTag(tag){
+  if (typeof ds.upsertTag === 'function') return ds.upsertTag(tag)
+  saveFallback()
+}
+async function deleteTagById(id){
+  if (typeof ds.deleteTag === 'function') return ds.deleteTag(id)
+  saveFallback()
+}
+async function upsertIngredient(it){
+  if (typeof ds.upsertIngredient === 'function') return ds.upsertIngredient(it)
+  saveFallback()
+}
+async function deleteIngredientById(id){
+  if (typeof ds.deleteIngredient === 'function') return ds.deleteIngredient(id)
+  saveFallback()
+}
+
+/* ---------- Tabs / 抽屜 ---------- */
 const tab = ref('status')
 const drawerOpen = ref(false)
 function switchTab(t){ tab.value = t; drawerOpen.value = false; nextTick(bindSortable) }
 
-/* ===== DB（含單店覆寫） ===== */
-const db = reactive(loadDB())
-function saveDB(){ localStorage.setItem('boss-ingredients', JSON.stringify(db)) }
-function loadDB(){
-  const raw = localStorage.getItem('boss-ingredients')
-  if (raw){
-    try{
-      const obj = JSON.parse(raw)
-      obj.ingredients ||= []; obj.tags ||= []; obj.stores ||= defaultStores()
-      obj.ingredients.forEach(it=>{
-        if (it.status && !it.statusGlobal) it.statusGlobal = it.status
-        it.statusByStore ||= {}
-      })
-      return obj
-    }catch{}
-  }
-  const tags = [
-    { id: rid(), name: '生鮮' },
-    { id: rid(), name: '冷凍' },
-    { id: rid(), name: '蔬菜' },
-  ]
-  const stores = defaultStores()
-  const ingredients = [
-    { id: rid(), name: '新鮮雞腿', code:'CK-001', unit:'份', shelfLife:2, supplier:'良品生鮮',
-      safeStock:10, trackExpiry:true, cost:25, price:60, statusGlobal:'available', statusByStore:{}, tags:[tags[0].id], image:'' },
-    { id: rid(), name: '新鮮豬腿', code:'PK-002', unit:'公斤', shelfLife:3, supplier:'鮮肉行',
-      safeStock:8, trackExpiry:true, cost:180, price:260, statusGlobal:'low', statusByStore:{}, tags:[tags[0].id], image:'' },
-    { id: rid(), name: '高麗菜', code:'VE-010', unit:'顆', shelfLife:5, supplier:'市場商行',
-      safeStock:6, trackExpiry:false, cost:30, price:80, statusGlobal:'available', statusByStore:{}, tags:[tags[2].id], image:'' },
-  ]
-  return { ingredients, tags, stores }
-}
-function defaultStores(){
-  return [
-    { id: rid(), name: '某某餐飲-總店' },
-    { id: rid(), name: '某某餐飲-東門店' },
-    { id: rid(), name: '某某餐飲-西門店' },
-  ]
-}
-
-/* ===== 共用工具 ===== */
-const store = reactive({ name:'某某餐飲店', id:'123456789' })
-function rid(){ return crypto?.randomUUID?.() ?? 'id-' + Math.random().toString(36).slice(2,10) }
-const toastMsg = ref(''); function toast(m){ toastMsg.value=m; setTimeout(()=>toastMsg.value='',1400) }
-function tagName(id){ return db.tags.find(t=>t.id===id)?.name ?? '（已刪除）' }
-function statusText(s){ return s==='available'?'可用':s==='low'?'缺貨':'停售' }
-
-/* ===== 左欄統一搜尋模型 / Chips 行為 ===== */
+/* ---------- 搜尋 / Chips ---------- */
 const qList = ref(''); const qTag = ref(''); const qStatus = ref('')
 const sideSearchPlaceholder = computed(() =>
   tab.value==='manage' ? '搜尋食材…' :
@@ -377,10 +442,10 @@ const sideSearchModel = computed({
 })
 const listTagFilter = reactive(new Set())
 const statusTagFilter = reactive(new Set())
+function tagName(id){ return db.tags.find(t=>t.id===id)?.name ?? '（已刪除）' }
 function isChipOn(id){
   if (tab.value==='manage') return listTagFilter.has(id)
   if (tab.value==='status') return statusTagFilter.has(id)
-  // tags：以是否被當作搜尋字串來亮顯
   return qTag.value && tagName(id) === qTag.value
 }
 function onChipClick(id){
@@ -393,9 +458,17 @@ function onChipClick(id){
   }
 }
 
-/* ===== 狀況設定（全門市/單店） ===== */
+/* ---------- 狀況設定（全門市/單店） ---------- */
 const scope = ref('global')
-const selectedStoreId = ref(db.stores[0]?.id || '')
+const selectedStoreId = ref('')
+watch(() => db.stores.map(s=>s.id).join(','), () => {
+  const def = snap?.settings?.store?.defaultStoreId || db.stores[0]?.id || ''
+  if (!selectedStoreId.value || !db.stores.some(s=>s.id===selectedStoreId.value)) {
+    selectedStoreId.value = def
+  }
+}, { immediate:true })
+
+function statusText(s){ return s==='available'?'可用':s==='low'?'缺貨':'停售' }
 function statusForScope(it){
   if (scope.value==='store'){
     return it.statusByStore?.[selectedStoreId.value] ?? it.statusGlobal
@@ -410,20 +483,18 @@ function setStatusForScope(it, val){
     it.statusGlobal = val
   }
 }
-function isOverridden(it){
-  return scope.value==='store' && it.statusByStore?.[selectedStoreId.value] !== undefined
-}
+function isOverridden(it){ return scope.value==='store' && it.statusByStore?.[selectedStoreId.value] !== undefined }
 function clearOverride(it){
   if (!it.statusByStore) return
   delete it.statusByStore[selectedStoreId.value]
-  saveDB(); toast('已清除覆寫')
+  upsertIngredient(it); toast('已清除覆寫')
 }
 function cycleStatusScoped(obj){
   const cur = statusForScope(obj)
   const next = cur==='available' ? 'low' : cur==='low' ? 'disabled' : 'available'
-  setStatusForScope(obj, next); saveDB()
+  setStatusForScope(obj, next)
+  upsertIngredient(obj)
 }
-/* 狀況分頁：篩選/多選 */
 const checkedIds = reactive(new Set())
 const checkedIdsArr = computed({
   get(){ return Array.from(checkedIds) },
@@ -440,17 +511,19 @@ function setBatchStatus(s){
     const it = db.ingredients.find(x=>x.id===id)
     if (it) setStatusForScope(it, s)
   }
-  saveDB(); toast('已更新狀態'); checkedIds.clear()
+  Promise.all(db.ingredients.map(upsertIngredient)).then(()=>{})
+  toast('已更新狀態'); checkedIds.clear()
 }
 const statusListRef = ref(null)
 function scrollToRow(id){
   statusListRef.value?.querySelector?.(`#row-${id}`)?.scrollIntoView({behavior:'smooth', block:'center'})
 }
 
-/* ===== 食材管理 ===== */
+/* ---------- 食材管理 ---------- */
 const selectedId = ref(null)
 const editing = reactive(blankItem())
 const tagToAdd = ref(''); const newTagName = ref('')
+
 function blankItem(){
   return { id:null, name:'', code:'', unit:UNITS[0], shelfLife:0, supplier:'',
           safeStock:0, trackExpiry:false, cost:0, price:0,
@@ -471,7 +544,7 @@ function selectItem(id){
   drawerOpen.value = false
 }
 const canSave = computed(() => !!editing.name?.trim() && !!editing.unit)
-function saveItem(){
+async function saveItem(){
   if (!editing.name.trim()) return toast('請輸入食材名稱')
   if (!editing.id){
     editing.id = rid()
@@ -482,13 +555,16 @@ function saveItem(){
     if (i>=0) db.ingredients[i] = JSON.parse(JSON.stringify(editing))
     toast('已更新食材')
   }
-  saveDB()
+  await upsertIngredient(editing)
+  saveFallback()
 }
-function removeItem(){
+async function removeItem(){
   if (!editing.id) return
   if (!confirm(`確定刪除「${editing.name}」？`)) return
   db.ingredients = db.ingredients.filter(x=>x.id!==editing.id)
-  saveDB(); createNew(); toast('已刪除')
+  await deleteIngredientById(editing.id)
+  saveFallback()
+  createNew(); toast('已刪除')
 }
 function duplicateItem(){
   if (!editing.id) return
@@ -502,7 +578,7 @@ function revertEditing(){ selectedId.value ? selectItem(selectedId.value) : crea
 function pickImage(e){
   const f = e.target.files?.[0]; if (!f) return
   const reader = new FileReader()
-  reader.onload = () => { editing.image = String(reader.result); }
+  reader.onload = () => { editing.image = String(reader.result) }
   reader.readAsDataURL(f)
 }
 function addTagToEditing(){
@@ -514,56 +590,68 @@ function removeTagFromEditing(id){ editing.tags = editing.tags.filter(x=>x!==id)
 function quickCreateTag(){
   if (!newTagName.value.trim()) return
   const t = { id: rid(), name: newTagName.value.trim() }
-  db.tags.push(t); saveDB()
+  db.tags.push(t); upsertTag(t); saveFallback()
   tagToAdd.value = t.id; newTagName.value = ''
   addTagToEditing()
 }
 
-/* ===== 標籤管理（左欄拖曳） ===== */
+/* ---------- 標籤管理 ---------- */
 const filteredTags = computed(() => {
   const q = qTag.value.trim()
   return !q ? db.tags : db.tags.filter(t => t.name.includes(q))
 })
-function createTag(){
-  if (!newTagName.value.trim()) return
-  if (db.tags.some(t=>t.name===newTagName.value.trim())) return toast('標籤名稱已存在')
-  db.tags.push({ id: rid(), name: newTagName.value.trim() })
-  newTagName.value = ''; saveDB(); toast('已新增標籤')
+async function createTag(){
+  const name = newTagName.value.trim()
+  if (!name) return toast('請輸入標籤名稱')
+  if (db.tags.some(t=>t.name===name)) return toast('標籤名稱已存在')
+  const t = { id: rid(), name }
+  db.tags.push(t)
+  newTagName.value = ''
+  await upsertTag(t)
+  saveFallback()
+  toast('已新增標籤')
 }
-function renameTag(t){
+async function renameTag(t){
   const n = prompt('輸入新的標籤名稱：', t.name)
   if (!n) return
-  if (db.tags.some(x=>x.id!==t.id && x.name===n.trim())) return toast('名稱重複')
-  t.name = n.trim(); saveDB(); toast('已更名')
+  const name = n.trim()
+  if (!name) return
+  if (db.tags.some(x=>x.id!==t.id && x.name===name)) return toast('名稱重複')
+  t.name = name
+  await upsertTag(t)
+  saveFallback()
+  toast('已更名')
 }
-function removeTag(t){
+async function removeTag(t){
   if (!confirm(`刪除標籤「${t.name}」？會同步從所有食材移除`)) return
   db.ingredients.forEach(it => { it.tags = it.tags.filter(id => id !== t.id) })
   db.tags = db.tags.filter(x=>x.id!==t.id)
-  saveDB(); toast('已刪除標籤')
+  await deleteTagById(t.id)
+  saveFallback()
+  toast('已刪除標籤')
 }
 function tagUsageCount(id){ return db.ingredients.filter(it => it.tags.includes(id)).length }
+
 const tagListRef = ref(null)
 function bindSortable(){
-  if (tagListRef.value){
-    Sortable.create(tagListRef.value, {
-      animation: 150,
-      handle: '.grip',
-      draggable: '.tag-row',
-      onEnd: () => {
-        const ids = Array.from(tagListRef.value.querySelectorAll('.tag-row')).map(el => el.dataset.id)
-        const map = new Map(db.tags.map(t=>[t.id,t]))
-        db.tags = ids.map(id => map.get(id)).filter(Boolean)
-        saveDB()
-      }
-    })
-  }
+  if (!tagListRef.value) return
+  Sortable.create(tagListRef.value, {
+    animation: 150, handle: '.grip', draggable: '.tag-row',
+    onEnd: async () => {
+      const ids = Array.from(tagListRef.value.querySelectorAll('.tag-row')).map(el => el.dataset.id)
+      const map = new Map(db.tags.map(t=>[t.id,t]))
+      db.tags = ids.map(id => map.get(id)).filter(Boolean)
+      await Promise.all(db.tags.map(upsertTag))
+      saveFallback()
+    }
+  })
 }
 onMounted(() => nextTick(bindSortable))
 
-/* ===== 匯入匯出 ===== */
+/* ---------- 匯出 / 匯入 ---------- */
 function exportJSON(){
-  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' })
+  const data = { ingredients: db.ingredients, tags: db.tags }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = 'ingredients.json'; a.click()
@@ -572,19 +660,17 @@ function exportJSON(){
 function importJSON(e){
   const f = e.target.files?.[0]; if (!f) return
   const reader = new FileReader()
-  reader.onload = () => {
+  reader.onload = async () => {
     try{
       const obj = JSON.parse(String(reader.result))
       if (!obj || !Array.isArray(obj.ingredients) || !Array.isArray(obj.tags)) throw new Error()
-      obj.stores ||= defaultStores()
-      obj.ingredients.forEach(it=>{
-        if (it.status && !it.statusGlobal) it.statusGlobal = it.status
-        it.statusByStore ||= {}
-      })
+      obj.ingredients.forEach(it=>{ it.statusByStore ||= {}; it.statusGlobal ||= 'available' })
       db.ingredients = obj.ingredients
       db.tags = obj.tags
-      db.stores = obj.stores
-      saveDB(); toast('已匯入資料')
+      await Promise.all(db.tags.map(upsertTag))
+      await Promise.all(db.ingredients.map(upsertIngredient))
+      saveFallback()
+      toast('已匯入資料')
     }catch{ toast('匯入失敗：檔案格式錯誤') }
   }
   reader.readAsText(f, 'utf-8')
@@ -592,65 +678,46 @@ function importJSON(e){
 </script>
 
 <style scoped>
-/* 命名空間 inv-，避免影響全站左側主功能欄 */
+/* —— 版面與共用 —— */
 .inv-page{padding:16px;background:#f6f8fc;min-height:100vh}
 .inv-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .title{font-size:20px;font-weight:800}
-.icon-btn{border:none;background:transparent;cursor:pointer;font-size:18px;opacity:.85}
-.icon-btn:hover{opacity:1}
 .spacer{flex:1}
+.card{background:#fff;border:1px solid #e6eaf2;border-radius:16px;padding:12px;margin-bottom:10px}
+.muted{color:#64748b}
 
 /* Tabs */
 .inv-tabs{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .tab{border:1px solid #e6eaf2;background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
 .tab.active{background:#e6f4ff;border-color:#cfe9ff}
-.btn{border:1px solid #cfe0ff;background:#fff;color:#2563eb;border-radius:10px;padding:8px 12px;cursor:pointer}
-.btn.primary{background:#2563eb;border-color:#2563eb;color:#fff}
-.btn.ghost{border-color:#e6eaf2;color:#334155;background:#fff}
-.btn.small{padding:6px 10px}
-.btn.danger{border-color:#fecaca;color:#b91c1c;background:#fff}
-.btn.warn{border-color:#fde68a;color:#b45309;background:#fff}
-.file-btn{position:relative;overflow:hidden}
-.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 
-/* 內容雙欄 */
+/* Grid */
 .inv-grid{display:grid;grid-template-columns:320px 1fr;gap:12px}
 
-/* 左欄（三分頁一致） */
+/* Side */
 .inv-side{background:#fff;border:1px solid #e6eaf2;border-radius:16px;overflow:hidden;position:relative}
-.side-store{display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid #f0f3f8}
-.avatar{width:40px;height:40px;border-radius:50%;background:#eef2ff;display:grid;place-items:center}
-.meta{flex:1}.name{font-weight:700}
-
 .side-tools{display:flex;flex-direction:column;gap:10px;padding:10px;border-bottom:1px solid #f0f3f8}
 .search{display:flex;align-items:center;gap:6px;border:1px solid #e6eaf2;border-radius:12px;padding:0 10px;min-height:38px;background:#fbfcff}
 .input{border:none;outline:none;background:transparent}
-.side-actions{display:flex;align-items:center;gap:8px;min-height:40px} /* 統一高度 */
-.action-spacer{height:32px;flex:1} /* 無動作時佔位 */
+.side-actions{display:flex;align-items:center;gap:8px;min-height:40px}
+.action-spacer{height:32px;flex:1}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
-
 .chip{border:1px solid #e6eaf2;border-radius:999px;background:#fff;padding:6px 10px;cursor:pointer}
 .chip.on{background:#eef2ff;border-color:#c7d2fe}
-
-.side-list{max-height:calc(100vh - 280px);overflow:auto;padding:10px}
+.side-list{max-height:calc(100vh - 240px);overflow:auto;padding:10px}
 .side-item{display:flex;gap:10px;align-items:center;border:1px solid #e6eaf2;border-radius:10px;padding:8px;margin-bottom:8px;cursor:pointer;background:#fff}
 .side-item.active{outline:2px solid #9ec5ff}
 .thumb{width:64px;height:48px;background-size:cover;background-position:center;border-radius:8px;border:1px solid #e6eaf2}
 .thumb.sm{width:44px;height:36px}
-.w-full{width:100%}
 
-/* 右欄主卡片 */
-.card{background:#fff;border:1px solid #e6eaf2;border-radius:16px;padding:12px}
+/* Main */
 .inv-main .main-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .only-mobile{display:none}
 .h3{margin:4px 0 8px}
-.muted{color:#64748b}.small{font-size:12px}
 .center{text-align:center}
 .mt-8{margin-top:8px}
 .w200{width:200px}.w160{width:160px}.w120{width:120px}
 .ml12{margin-left:12px}
-
-/* Seg */
 .seg{display:flex;gap:6px}
 .segbtn{border:1px solid #e6eaf2;background:#fff;border-radius:10px;padding:6px 10px;cursor:pointer}
 .segbtn.active{background:#e6f4ff;border-color:#cfe9ff}
@@ -660,7 +727,7 @@ function importJSON(e){
 .state-btn.available{border-color:#86efac;background:#f0fdf4;color:#166534}
 .state-btn.low{border-color:#fde68a;background:#fffbeb;color:#92400e}
 .state-btn.disabled{border-color:#fecaca;background:#fef2f2;color:#991b1b}
-.pill{display:inline-flex;gap:6px;align-items:center;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:2px 8px;margin-right:6px}
+.pill{display:inline-flex;gap:6px;align-items:center;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:2px 8px}
 .over-chip{margin-left:8px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:999px;padding:2px 8px}
 
 /* 狀況列表 */
@@ -671,15 +738,10 @@ function importJSON(e){
 .ck span{width:18px;height:18px;border:1px solid #cbd5e1;border-radius:4px;display:inline-block;background:#fff;position:relative}
 .ck input:checked + span::after{content:'';position:absolute;inset:2px;background:#2563eb;border-radius:2px}
 
-/* ✅ 新增：讓切換按鈕緊貼縮圖，靠左排列 */
-.left-actions{
-  display:flex;
-  align-items:center;
-  gap:8px;
-}
-.status-row .thumb{ margin-right:2px; }
+/* 右側操作 */
+.right-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
 
-/* 管理表單 */
+/* 表單 */
 .form-cols{display:grid;grid-template-columns:220px 1fr;gap:16px}
 .uploader input[type=file]{display:none}
 .thumb.xl{width:180px;height:135px;border-radius:12px}
@@ -695,6 +757,10 @@ function importJSON(e){
 
 /* 手機抽屜 */
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:30}
+
+/* 底部工具列 */
+.bottom{max-width:1200px;margin:12px auto 0;background:#fff;border:1px solid #e6eaf2;border-radius:16px;padding:12px}
+
 @media (max-width:1024px){
   .inv-grid{grid-template-columns:1fr}
   .inv-side{position:fixed;inset:0 auto 0 0;width:82%;max-width:340px;z-index:40;transform:translateX(-100%);transition:.2s}
@@ -704,4 +770,3 @@ function importJSON(e){
   .form-cols{grid-template-columns:1fr}
 }
 </style>
-  

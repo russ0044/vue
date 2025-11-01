@@ -1,29 +1,14 @@
 <template>
   <section class="inv-page">
-    <!-- 頁首 -->
+    <!-- 頁首（已移除店家資訊與設定圖示） -->
     <header class="inv-header">
       <div class="title">生成邀請碼（老闆）</div>
       <div class="spacer"></div>
-      <button class="btn ghost small" @click="onExport">匯出 JSON</button>
-      <label class="btn ghost small file-btn">
-        匯入 JSON
-        <input type="file" accept="application/json" @change="onImport">
-      </label>
-      <button class="icon-btn" title="頁面設定" @click="toast('尚未實作：頁面設定')">⚙</button>
     </header>
 
     <div class="inv-grid">
-      <!-- 左欄（固定樣式；不影響外層總側欄） -->
+      <!-- 左欄（移除店家卡片與頭像） -->
       <aside class="inv-side">
-        <div class="side-store">
-          <div class="avatar">🏪</div>
-          <div class="meta">
-            <div class="name">{{ store.name }}</div>
-            <div class="muted">ID：{{ store.id }}</div>
-          </div>
-          <button class="icon-btn" title="店家設定" @click="toast('尚未實作：店家設定')">⚙</button>
-        </div>
-
         <div class="side-tools">
           <div class="search">
             <span>🔎</span>
@@ -31,7 +16,6 @@
           </div>
 
           <div class="row gap">
-            <!-- 改為開啟快速產生彈窗 -->
             <button class="btn primary w-full" @click="openQuick">＋ 產生邀請碼</button>
           </div>
 
@@ -174,7 +158,7 @@
       </main>
     </div>
 
-    <!-- 快速產生：可選「全部店面 / 指定店面」-->
+    <!-- 快速產生：全部店面 / 指定店面 -->
     <transition name="fade">
       <div v-if="quickOpenFlag" class="modal" @click.self="quickOpenFlag=false">
         <div class="sheet">
@@ -239,6 +223,17 @@
       </div>
     </transition>
 
+    <!-- ✅ 匯出／匯入移到最下方 -->
+    <div class="bottom card">
+      <div class="row gap">
+        <button class="btn ghost" @click="onExport">匯出 JSON</button>
+        <label class="btn ghost file-btn">
+          匯入 JSON
+          <input type="file" accept="application/json" @change="onImport">
+        </label>
+      </div>
+    </div>
+
     <transition name="fade"><div v-if="toastMsg" class="toast">{{ toastMsg }}</div></transition>
   </section>
 </template>
@@ -270,9 +265,6 @@ const ROLES = [
   { id:'ck',       name:'中央廚房' },
   { id:'custom',   name:'自訂' },
 ]
-
-/* 店家卡片（展示） */
-const store = reactive({ name:'某某餐飲店', id:'123456789' })
 
 /* 狀態 */
 const stores  = ref([])
@@ -331,8 +323,7 @@ function resolveStatus(c){
   return 'active'
 }
 function copy(t){ if(!t) return; navigator.clipboard?.writeText(String(t)); toast('已複製到剪貼簿') }
-const toastMsg = ref('')
-function toast(m){ toastMsg.value=m; setTimeout(()=>toastMsg.value='',1400) }
+const toastMsg = ref(''); function toast(m){ toastMsg.value=m; setTimeout(()=>toastMsg.value='',1400) }
 
 /* 編輯流程 */
 function createNew(){
@@ -371,7 +362,7 @@ async function createPreset(){
   toast('已建立模板')
 }
 
-/* CRUD（透過 service；未來改 Firebase 只改 service 內容） */
+/* CRUD（透過 service；切換 Firebase/假資料都由 service 處理） */
 async function save(){
   if (!editing.id){
     const created = await createInvite(JSON.parse(JSON.stringify(editing)))
@@ -403,7 +394,7 @@ async function batchGenerate(){
   toast(`已生成 ${n} 組邀請碼`)
 }
 
-/* 匯入匯出 */
+/* 匯入匯出（已移至頁面底部） */
 async function onExport(){
   const blob = await exportAll()
   const url = URL.createObjectURL(blob)
@@ -421,7 +412,7 @@ async function onImport(e){
   }catch{ toast('匯入失敗：格式錯誤') }
 }
 
-/* ========= 快速產生：全部店面 / 指定店面 ========= */
+/* 快速產生（彈窗） */
 const quickOpenFlag = ref(false)
 const quick = reactive({
   scope:'all', storeIds:[], role:'employee', presetId:'',
@@ -438,13 +429,10 @@ function toggleQuickStore(id){
   if (i>=0) quick.storeIds.splice(i,1); else quick.storeIds.push(id)
 }
 async function confirmQuick(){
-  // 1) 準備資料（店面範圍）
   const storeIds = quick.scope==='all' ? stores.value.map(s=>s.id) : [...quick.storeIds]
-  // 2) 權限模板
   let perms = PERMS.reduce((o,p)=> (o[p.key]=false,o),{})
   const p = presets.value.find(x=>x.id===quick.presetId)
   if (p) perms = JSON.parse(JSON.stringify(p.permissions))
-  // 3) 建立一筆邀請碼
   const created = await createInvite({
     id:null,
     code: genCodeService(),
@@ -468,21 +456,16 @@ async function confirmQuick(){
 </script>
 
 <style scoped>
-/* 命名空間 inv-；不使用 100vh，避免影響你的總功能欄 */
+/* 容器 */
 .inv-page{ padding:16px; background:#f6f8fc; min-height:100%; height:auto; overflow:visible; }
 .inv-header{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 .title{ font-size:20px; font-weight:800; }
 .title.sm{ font-size:16px; font-weight:800; }
-.icon-btn{ border:none; background:transparent; cursor:pointer; font-size:18px; opacity:.85; }
-.icon-btn:hover{ opacity:1; }
 .spacer{ flex:1; }
 
 /* 兩欄 */
 .inv-grid{ display:grid; grid-template-columns:320px 1fr; gap:12px; min-width:0; }
 .inv-side{ background:#fff; border:1px solid #e6eaf2; border-radius:16px; overflow:hidden; }
-.side-store{ display:flex; align-items:center; gap:12px; padding:12px; border-bottom:1px solid #f0f3f8; }
-.avatar{ width:40px; height:40px; border-radius:50%; background:#eef2ff; display:grid; place-items:center; }
-.meta{ flex:1; } .name{ font-weight:700; }
 .side-tools{ display:flex; flex-direction:column; gap:10px; padding:10px; border-bottom:1px solid #f0f3f8; }
 .search{ display:flex; align-items:center; gap:6px; border:1px solid #e6eaf2; border-radius:12px; padding:0 10px; min-height:38px; background:#fbfcff; }
 .input{ border:none; outline:none; background:transparent; }
@@ -494,15 +477,7 @@ async function confirmQuick(){
 .side-item{ display:flex; gap:10px; align-items:center; border:1px solid #e6eaf2; border-radius:10px; padding:8px; margin-bottom:8px; cursor:pointer; background:#fff; }
 .side-item.active{ outline:2px solid #9ec5ff; }
 
-/* 清單長文字省略 */
-.ell{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-.badge{ display:inline-flex; align-items:center; justify-content:center; min-width:54px; height:24px; border-radius:999px; font-size:12px; padding:0 8px; border:1px solid #e2e8f0; background:#f8fafc; }
-.badge.active{ background:#f0fdf4; border-color:#86efac; color:#166534; }
-.badge.revoked{ background:#fef2f2; border-color:#fecaca; color:#7f1d1d; }
-.badge.expired{ background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
-.badge.used{ background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
-
+/* 右欄卡片 */
 .card{ background:#fff; border:1px solid #e6eaf2; border-radius:16px; padding:12px; min-width:0; }
 .card-lite{ border:1px dashed #e6eaf2; border-radius:12px; padding:12px; margin-bottom:12px; background:#fcfdff; }
 .h3{ margin:4px 0 8px; }
@@ -517,10 +492,32 @@ async function confirmQuick(){
 .perm-grid{ display:grid; grid-template-columns:repeat(3, minmax(200px, 1fr)); gap:8px; }
 .perm{ display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid #e6eaf2; border-radius:10px; background:#fff; }
 
-/* Seg（範圍切換） */
+/* Seg */
 .seg{ display:flex; gap:6px }
 .segbtn{ border:1px solid #e6eaf2; background:#fff; border-radius:10px; padding:6px 10px; cursor:pointer }
 .segbtn.active{ background:#e6f4ff; border-color:#cfe9ff }
+
+/* 徽章 */
+.badge{ display:inline-flex; align-items:center; justify-content:center; min-width:54px; height:24px; border-radius:999px; font-size:12px; padding:0 8px; border:1px solid #e2e8f0; background:#f8fafc; }
+.badge.active{ background:#f0fdf4; border-color:#86efac; color:#166534; }
+.badge.revoked{ background:#fef2f2; border-color:#fecaca; color:#7f1d1d; }
+.badge.expired{ background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
+.badge.used{ background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
+
+/* 底部工具列（匯出／匯入） */
+.bottom{ max-width:1200px; margin:12px auto 0; background:#fff; border:1px solid #e6eaf2; border-radius:16px; padding:12px; }
+.file-btn{ position:relative; overflow:hidden }
+.file-btn input{ position:absolute; inset:0; opacity:0; cursor:pointer }
+
+/* 其他 */
+.muted{ color:#64748b; } .tiny{ font-size:11px; }
+.center{ text-align:center; }
+.ell{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.btn{ border:1px solid #cfe0ff; background:#fff; color:#2563eb; border-radius:10px; padding:8px 12px; cursor:pointer }
+.btn.primary{ background:#2563eb; border-color:#2563eb; color:#fff }
+.btn.ghost{ border-color:#e6eaf2; color:#334155; background:#fff }
+.btn.small{ padding:6px 10px }
+.btn.danger{ border-color:#fecaca; color:#b91c1c; background:#fff }
 
 /* Modal */
 .modal{ position:fixed; inset:0; background:rgba(0,0,0,.28); display:grid; place-items:center; z-index:60; padding:20px }
@@ -529,26 +526,12 @@ async function confirmQuick(){
 .sheet-body{ padding:14px }
 .sheet-foot{ padding:12px 14px; border-top:1px solid #eef2f6; display:flex; align-items:center; gap:8px }
 
-.ck input{ display:none; }
-.ck span{ width:18px; height:18px; border:1px solid #cbd5e1; border-radius:4px; display:inline-block; background:#fff; position:relative; }
-.ck input:checked + span::after{ content:''; position:absolute; inset:2px; background:#2563eb; border-radius:2px; }
+/* 勾選框 */
+.chk input{ display:none; }
+.chk span{ width:18px; height:18px; border:1px solid #cbd5e1; border-radius:4px; display:inline-block; background:#fff; position:relative; }
+.chk input:checked + span::after{ content:''; position:absolute; inset:2px; background:#2563eb; border-radius:2px; }
 
-.btn{ border:1px solid #cfe0ff; background:#fff; color:#2563eb; border-radius:10px; padding:8px 12px; cursor:pointer }
-.btn.primary{ background:#2563eb; border-color:#2563eb; color:#fff }
-.btn.ghost{ border-color:#e6eaf2; color:#334155; background:#fff }
-.btn.small{ padding:6px 10px }
-.btn.danger{ border-color:#fecaca; color:#b91c1c; background:#fff }
-
-.file-btn{ position:relative; overflow:hidden }
-.file-btn input{ position:absolute; inset:0; opacity:0; cursor:pointer }
-
-.muted{ color:#64748b; } .tiny{ font-size:11px; }
-.center{ text-align:center; }
-
-.toast{ position:fixed; right:16px; bottom:16px; background:#111827; color:#fff; padding:10px 12px; border-radius:10px; opacity:.95; z-index:70; }
-.fade-enter-active,.fade-leave-active{ transition:.18s }
-.fade-enter-from,.fade-leave-to{ opacity:0; transform:translateY(6px) }
-
+/* RWD */
 @media (max-width:1024px){
   .inv-grid{ grid-template-columns:1fr; }
   .side-list{ max-height:none; }
