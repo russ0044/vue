@@ -30,14 +30,16 @@ const EmpOrders    = () => import('@/view/employee/EmpOrders.vue')
 const EmpReports   = () => import('@/view/employee/EmpReports.vue')
 const EmpDelivery  = () => import('@/view/employee/EmpDelivery.vue')
 
-// Kitchen 子頁
-const KitchenDashboard = () => import('@/view/kitchen/KitchenDashboard.vue')
+// Kitchen 子頁（⚠️ 這裡要載入「頁面元件 .vue」，不要載入 composable js）
+const KOrders   = () => import('@/view/kitchen/KitchenOrders.vue')
+const KRecords  = () => import('@/view/kitchen/KitchenRecords.vue')
+const KRequests = () => import('@/view/kitchen/KitchenRequests.vue')
 
 // 依角色回到預設首頁（集中管理）
 function defaultRouteByRole(role) {
-  if (role === 'Boss') return { name: 'boss-inventory' }
+  if (role === 'Boss')     return { name: 'boss-inventory' }
   if (role === 'Employee') return { name: 'emp-inventory' }
-  if (role === 'Kitchen') return { name: 'kitchen-manage' }
+  if (role === 'Kitchen')  return { name: 'kitchen-orders' } // 預設導到訂單
   return { name: 'login' }
 }
 
@@ -85,12 +87,14 @@ const routes = [
   // 中央廚房端
   {
     path: '/kitchen',
-    component: Kitchen,
+    component: Kitchen, // 你貼的 Kitchen.vue（外殼 + <router-view/>）
     meta: { requiresAuth: true, role: 'Kitchen' },
     children: [
-      { path: '', redirect: { name: 'kitchen-manage' } },
-      { path: 'manage', name: 'kitchen-manage', component: KitchenDashboard,
-        meta: { title: '中央廚房管理', requiresPerm: 'kitchen.manage' } },
+      { path: '', redirect: { name: 'kitchen-orders' } }, // 首頁導到訂單
+      { path: 'manage',   name: 'kitchen-manage',   component: KOrders,   meta: { title: '中央廚房總覽', requiresPerm: 'kitchen.manage' } },
+      { path: 'orders',   name: 'kitchen-orders',   component: KOrders,   meta: { title: '訂單管理',     requiresPerm: 'kitchen.manage' } },
+      { path: 'records',  name: 'kitchen-records',  component: KRecords,  meta: { title: '生產紀錄',     requiresPerm: 'kitchen.manage' } },
+      { path: 'requests', name: 'kitchen-requests', component: KRequests, meta: { title: '原料申請',     requiresPerm: 'kitchen.manage' } },
     ],
   },
 
@@ -103,6 +107,7 @@ const routes = [
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
+  // 回頂端即可（若你想保留返回位置，再改回 savedPosition 判斷）
   scrollBehavior: () => ({ top: 0 }),
 })
 
@@ -124,10 +129,9 @@ router.beforeEach((to, _from, next) => {
     return next(defaultRouteByRole(roleState.role))
   }
 
-  // 權限不足（若有定義 requiresPerm 且你的 role store 有 perms 陣列）
+  // 權限不足
   if (needPerm && Array.isArray(roleState?.perms)) {
     if (!roleState.perms.includes(needPerm)) {
-      // 權限不足時：回角色首頁
       return next(defaultRouteByRole(roleState.role))
     }
   }
@@ -146,6 +150,7 @@ router.afterEach((to) => {
 })
 
 export default router
+
 
 
 //npm install
