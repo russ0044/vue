@@ -1,53 +1,38 @@
-/* 統一樣式入口（未來在這裡 @import 你的 base、theme、ui.css） */
-/* @import './ui.css'; */
-
-/* ========== 主題色票（亮色） ========== */
+/* 亮色（預設） */
 :root {
-  /* Page/base */
-  --page-bg: #f7f7f8;
+  --bg: #f7f7f8;
   --text: #111827;
-  --muted: #6b7280;
-
-  /* Surface */
   --card-bg: #ffffff;
   --border: #e5e7eb;
-  --hover-bg: #f9fafb;
-
-  /* Table */
   --thead-bg: #f1f5f9;
   --thead-text: #1f2937;
-
-  /* 功能色（可在專案共用） */
-  --ok: #16a34a;
-  --warn: #ca8a04;
-  --danger: #dc2626;
+  --hover-bg: #f9fafb;
+  --muted: #6b7280;
 }
 
-/* ========== 主題色票（暗色） ========== */
-.theme-dark {
-  --page-bg: #0b1220;   /* 整體頁面底色（比卡片更深） */
+/* 暗色（全域） */
+:root.dark {
+  --bg: #0f172a;
   --text: #e2e8f0;
+  --card-bg: #1e293b;
+  --border: #334155;
+  --thead-bg: #1e293b;
+  --thead-text: #f1f5f9;
+  --hover-bg: #273549;
   --muted: #94a3b8;
-
-  --card-bg: #111827;   /* 卡片 */
-  --border: #1f2937;
-  --hover-bg: #192234;
-
-  --thead-bg: #0f172a;
-  --thead-text: #e5e7eb;
 }
 
-/* ========== 全站底層 ========== */
-html, body, #app { height: 100%; }
-body {
-  margin: 0;
-  background: var(--page-bg);
+/* 一些常見元件的通用樣式（可選） */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.input {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   color: var(--text);
-  font-family: 'Noto Sans TC', 'Microsoft JhengHei', system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  transition: background .25s ease, color .25s ease;
 }
-
-/* 常用公用類（給各頁沿用） */
-.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; }
-.table thead th { background: var(--thead-bg); color: var(--thead-text); }
+.table th { background: var(--thead-bg); color: var(--thead-text); }
+.table tr:hover td { background: var(--hover-bg); }
 .muted { color: var(--muted); }

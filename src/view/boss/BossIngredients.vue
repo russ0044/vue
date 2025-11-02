@@ -1,5 +1,5 @@
 <template>
-  <section class="inv-page">
+  <section class="inv-page" :class="{ dark: isDark }">
     <header class="inv-header">
       <div class="title">食材資料</div>
       <div class="spacer"></div>
@@ -290,6 +290,9 @@ import * as ds from '@/store/datasource'
 
 defineOptions({ name: 'BossIngredients' })
 
+/* ---------- 與庫存頁一致的主題狀態 ---------- */
+const isDark = ref((localStorage.getItem('theme') || 'auto') === 'dark')
+
 /* ---------- UI 常數 ---------- */
 const UNITS = ['個','份','公斤','公克','公升','毫升','盒','包','罐','瓶','條']
 const placeholder = 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -305,7 +308,7 @@ const ready = ref(false)
 const errorMsg = ref('')
 
 /* ---------- 來源訂閱 ---------- */
-const snap = reactive(ds.read() || {})
+const snap = reactive(ds.read?.() || {})
 let unsub = null
 
 function ensureContainers(o){
@@ -318,6 +321,7 @@ function ensureContainers(o){
 onMounted(() => {
   try {
     ensureContainers(snap)
+
     if (typeof ds.subscribe === 'function') {
       unsub = ds.subscribe((s) => {
         Object.assign(snap, s || {})
@@ -327,6 +331,9 @@ onMounted(() => {
     }
     loadDataFromSource()
     ready.value = true
+
+    // 與庫存頁相同：若為深色，將 <html> 加上 .dark
+    if (isDark.value) document.documentElement.classList.add('dark')
   } catch (e) {
     errorMsg.value = String(e?.message || e)
   }
@@ -461,6 +468,7 @@ function onChipClick(id){
 /* ---------- 狀況設定（全門市/單店） ---------- */
 const scope = ref('global')
 const selectedStoreId = ref('')
+
 watch(() => db.stores.map(s=>s.id).join(','), () => {
   const def = snap?.settings?.store?.defaultStoreId || db.stores[0]?.id || ''
   if (!selectedStoreId.value || !db.stores.some(s=>s.id===selectedStoreId.value)) {
@@ -760,6 +768,28 @@ function importJSON(e){
 
 /* 底部工具列 */
 .bottom{max-width:1200px;margin:12px auto 0;background:#fff;border:1px solid #e6eaf2;border-radius:16px;padding:12px}
+
+/* —— 深色主題覆寫（沿用 .dark 機制） —— */
+:global(.dark) .inv-page{ background:#0f172a; }
+:global(.dark) .card,
+:global(.dark) .inv-side,
+:global(.dark) .side-item,
+:global(.dark) .status-row,
+:global(.dark) .tag-row,
+:global(.dark) .bottom{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
+:global(.dark) .search{ background:#0b1624; border-color:#334155; }
+:global(.dark) .input{ color:#e2e8f0; }
+:global(.dark) .tab{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
+:global(.dark) .tab.active{ background:#0b3260; border-color:#1d4ed8; }
+:global(.dark) .chip{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
+:global(.dark) .chip.on{ background:#273549; border-color:#3b82f6; }
+:global(.dark) .thumb,
+:global(.dark) .pill{ border-color:#475569; }
+:global(.dark) .muted{ color:#94a3b8; }
+:global(.dark) .segbtn{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
+:global(.dark) .segbtn.active{ background:#0b3260; border-color:#1d4ed8; }
+:global(.dark) .state-btn{ background:#1e293b; border-color:#334155; }
+:global(.dark) .ck span{ background:#1e293b; border-color:#475569; }
 
 @media (max-width:1024px){
   .inv-grid{grid-template-columns:1fr}

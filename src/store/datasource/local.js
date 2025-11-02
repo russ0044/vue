@@ -3,10 +3,12 @@
 import { reactive } from 'vue'
 import { seedData } from '@/seed/seedData'
 
-// 建 reactive 副本，避免直接動到 seedData 常數本體
-const db = reactive(JSON.parse(JSON.stringify(seedData)))
+/* ------------------ 初始化資料 ------------------ */
+// 建 reactive 副本（避免直接修改 seedData 常數）
+const db = reactive(JSON.parse(JSON.stringify(seedData || {})))
 
-// 安全欄位：避免頁面取用時 undefined
+// 確保主要欄位存在
+db.runtime      ||= { mode: 'local', theme: localStorage.getItem('theme') || 'light' }
 db.roleGroups   ||= [
   { id: 'RG-BOSS', name: '老闆', permissions: ['管理使用者','查看報表','庫存調整'] },
   { id: 'RG-EMP',  name: '店員', permissions: ['入庫（進貨/退料）','出庫（銷售/領料）'] },
@@ -20,23 +22,28 @@ db.settings     ||= { store: { allowNegativeStock:false, defaultStoreId:'', defa
 db.users        ||= []
 db.invites      ||= []
 
-// 讓畫面能收到更新
+/* ------------------ 觀察者機制 ------------------ */
 const listeners = []
+
 function notifyAll() {
   const snap = read()
-  listeners.forEach(fn => { try { fn(snap) } catch(e) { console.warn(e) } })
+  listeners.forEach(fn => {
+    try { fn(snap) } catch (err) { console.warn('[local.js] listener error:', err) }
+  })
 }
 
-/* 讀整包資料（提供乾淨拷貝，避免外面直接改 reactive） */
+/* ------------------ 公開 API ------------------ */
+
+/** 讀取完整資料快照 */
 export function read() {
   return JSON.parse(JSON.stringify(db))
 }
 
-/* 訂閱（BossRoleGroups 等畫面會用） */
+/** 訂閱資料更新 */
 export function subscribe(cb) {
   if (typeof cb === 'function') {
     listeners.push(cb)
-    cb(read()) // 立即丟一次
+    cb(read()) // 初始推送一次
   }
   return () => {
     const i = listeners.indexOf(cb)
@@ -44,7 +51,12 @@ export function subscribe(cb) {
   }
 }
 
-/* ----------------- 店面 CRUD ----------------- */
+/** 手動觸發更新（若外部修改） */
+export function refresh() {
+  notifyAll()
+}
+
+/* ------------------ 店面 CRUD ------------------ */
 export function addStore(store) {
   const newId = `S${String(db.stores.length + 1).padStart(3, '0')}`
   db.stores.push({
@@ -54,7 +66,6 @@ export function addStore(store) {
     phone: store.phone || '',
     type: store.type || 'branch', // branch | central
   })
-  // 確保有預設店面
   if (!db.settings.store.defaultStoreId) {
     db.settings.store.defaultStoreId = newId
   }
@@ -74,7 +85,6 @@ export function deleteStore(id) {
   const idx = db.stores.findIndex(x => x.id === id)
   if (idx !== -1) {
     db.stores.splice(idx, 1)
-    // 如果刪掉的是預設店面，移到第一個
     if (db.settings.store.defaultStoreId === id) {
       db.settings.store.defaultStoreId = db.stores[0]?.id || ''
     }
@@ -87,7 +97,7 @@ export function setDefaultStore(id) {
   notifyAll()
 }
 
-/* ----------------- 使用者 / 邀請碼 ----------------- */
+/* ------------------ 使用者 / 邀請 ------------------ */
 export function emailExists(email) {
   return db.users.some(u => u.email?.toLowerCase() === email.toLowerCase())
 }
@@ -100,24 +110,18 @@ export function addUser(user) {
     email: user.email,
     phone: user.phone || '',
     roleGroupId: user.roleGroupId || 'RG-EMP',
+    storeId: user.storeId || db.settings.store.defaultStoreId || '',
   })
   notifyAll()
   return newId
 }
 
-// 假邀請碼格式：{ code, role, storeId, used:false, expiresAt: timestamp }
 export function verifyInvite(code) {
   const inv = db.invites.find(v => v.code === code)
-  if (!inv) {
-    return { ok:false, reason:'not_found' }
-  }
-  if (inv.used) {
-    return { ok:false, reason:'used' }
-  }
+  if (!inv) return { ok:false, reason:'not_found' }
+  if (inv.used) return { ok:false, reason:'used' }
   const now = Date.now()
-  if (inv.expiresAt && inv.expiresAt < now) {
-    return { ok:false, reason:'expired' }
-  }
+  if (inv.expiresAt && inv.expiresAt < now) return { ok:false, reason:'expired' }
   return { ok:true, role:inv.role, storeId:inv.storeId, expiresAt:inv.expiresAt }
 }
 
@@ -129,9 +133,8 @@ export function markInviteUsed(code) {
   }
 }
 
-/* ----------------- 角色 / 門市群組 ----------------- */
+/* ------------------ 角色 / 群組 ------------------ */
 export function upsertRoleGroup(payload) {
-  // payload: { id?, name, permissions[] }
   if (payload.id) {
     const tgt = db.roleGroups.find(r => r.id === payload.id)
     if (tgt) {
@@ -141,7 +144,7 @@ export function upsertRoleGroup(payload) {
       return tgt.id
     }
   }
-  const newId = 'RG-' + Math.random().toString(36).slice(2,8).toUpperCase()
+  const newId = 'RG-' + Math.random().toString(36).slice(2, 8).toUpperCase()
   db.roleGroups.push({
     id: newId,
     name: payload.name || '未命名群組',
@@ -160,14 +163,10 @@ export function renameRole(id, newName) {
 }
 
 export function deleteRoleGroup(id) {
-  // 從角色列表刪
   db.roleGroups = db.roleGroups.filter(g => g.id !== id)
-
-  // 從 storeGroups 解除綁定
   Object.keys(db.storeGroups).forEach(storeId => {
     db.storeGroups[storeId] = (db.storeGroups[storeId] || []).filter(rid => rid !== id)
   })
-
   notifyAll()
 }
 
@@ -182,4 +181,68 @@ export function duplicateStoreGroups(srcStoreId, destIds) {
     db.storeGroups[did] = [...src]
   })
   notifyAll()
+}
+
+/* ------------------ 庫存 / 門檻 ------------------ */
+export function upsertInventory(item) {
+  // item: { storeId, sku, name, qty, unit, exp }
+  const idx = db.inventory.findIndex(i => i.storeId === item.storeId && i.sku === item.sku)
+  if (idx >= 0) db.inventory[idx] = { ...db.inventory[idx], ...item }
+  else db.inventory.push({ ...item })
+  notifyAll()
+}
+
+export function deleteInventory(storeId, sku) {
+  db.inventory = db.inventory.filter(i => !(i.storeId === storeId && i.sku === sku))
+  notifyAll()
+}
+
+export function setThreshold(storeId, minQty) {
+  const t = db.thresholds.find(x => x.storeId === storeId)
+  if (t) t.minQty = minQty
+  else db.thresholds.push({ storeId, minQty })
+  notifyAll()
+}
+
+/* ------------------ 模式 / 主題切換 ------------------ */
+export function setMode(mode) {
+  db.runtime.mode = mode
+  localStorage.setItem('mode', mode)
+  notifyAll()
+}
+
+export function setTheme(theme) {
+  db.runtime.theme = theme
+  localStorage.setItem('theme', theme)
+  notifyAll()
+}
+
+/* ------------------ Debug：開發環境用 ------------------ */
+if (import.meta.env?.DEV) {
+  console.log('%c[LocalDB] 假資料啟動完成', 'color:#22c55e;font-weight:bold')
+  console.log(db)
+}
+
+export default {
+  read,
+  subscribe,
+  refresh,
+  addStore,
+  renameStore,
+  deleteStore,
+  setDefaultStore,
+  emailExists,
+  addUser,
+  verifyInvite,
+  markInviteUsed,
+  upsertRoleGroup,
+  renameRole,
+  deleteRoleGroup,
+  setStoreGroups,
+  duplicateStoreGroups,
+  upsertInventory,
+  deleteInventory,
+  setThreshold,
+  setMode,
+  setTheme,
 }

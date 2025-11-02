@@ -3,18 +3,18 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuth } from '@/store/auth'
 import { useRoleStore } from '@/store/roleStore'
 
-// 外殼（Layout）
+// Layout
 import Boss from '@/view/Boss.vue'
 const Employee = () => import('@/view/Employee.vue')
 const Kitchen  = () => import('@/view/Kitchen.vue')
 
-// 通用頁
+// Common
 const LoginView      = () => import('@/view/LoginView.vue')
 const RegisterView   = () => import('@/view/RegisterView.vue')
 const SystemSettings = () => import('@/view/settings/SystemSettings.vue')
 const NotFound       = () => import('@/view/NotFound.vue')
 
-// Boss 子頁
+// Boss children
 const BossInventory     = () => import('@/view/boss/BossInventory.vue')
 const BossIngredients   = () => import('@/view/boss/BossIngredients.vue')
 const BossRoleGroups    = () => import('@/view/boss/BossRoleGroups.vue')
@@ -24,45 +24,47 @@ const BossStores        = () => import('@/view/boss/BossStores.vue')
 const BossInvite        = () => import('@/view/boss/BossInvite.vue')
 const BossReports       = () => import('@/view/boss/BossReports.vue')
 
-// Employee 子頁
+// Employee children
 const EmpInventory = () => import('@/view/employee/EmpInventory.vue')
 const EmpOrders    = () => import('@/view/employee/EmpOrders.vue')
 const EmpReports   = () => import('@/view/employee/EmpReports.vue')
 const EmpDelivery  = () => import('@/view/employee/EmpDelivery.vue')
 
-// Kitchen 子頁（⚠️ 這裡要載入「頁面元件 .vue」，不要載入 composable js）
+// Kitchen children
 const KOrders   = () => import('@/view/kitchen/KitchenOrders.vue')
 const KRecords  = () => import('@/view/kitchen/KitchenRecords.vue')
 const KRequests = () => import('@/view/kitchen/KitchenRequests.vue')
 
-// 依角色回到預設首頁（集中管理）
+// 依角色回首頁
 function defaultRouteByRole(role) {
   if (role === 'Boss')     return { name: 'boss-inventory' }
   if (role === 'Employee') return { name: 'emp-inventory' }
-  if (role === 'Kitchen')  return { name: 'kitchen-orders' } // 預設導到訂單
+  if (role === 'Kitchen')  return { name: 'kitchen-orders' }
   return { name: 'login' }
 }
 
 const routes = [
   { path: '/', redirect: '/login' },
-  { path: '/login',    name: 'login',    component: LoginView,    meta: { title: '登入' } },
-  { path: '/register', name: 'register', component: RegisterView, meta: { title: '註冊' } },
 
-  // 老闆端（左側功能欄一律在 Boss.vue 呈現）
+  // 不需登入（加 guestOnly，已登入時會擋）
+  { path: '/login',    name: 'login',    component: LoginView,    meta: { title: '登入', guestOnly: true } },
+  { path: '/register', name: 'register', component: RegisterView, meta: { title: '註冊', guestOnly: true } },
+
+  // 老闆端
   {
     path: '/boss',
     component: Boss,
     meta: { requiresAuth: true, role: 'Boss' },
     children: [
       { path: '', redirect: { name: 'boss-inventory' } },
-      { path: 'inventory',   name: 'boss-inventory',   component: BossInventory,   meta: { title: '檢視店面庫存', requiresPerm: 'inventory.view' } },
-      { path: 'ingredients', name: 'boss-ingredients', component: BossIngredients, meta: { title: '食材資料',     requiresPerm: 'ingredients.view' } },
-      { path: 'rolegroups',  name: 'boss-rolegroups',  component: BossRoleGroups,  meta: { title: '群組權限',     requiresPerm: 'roles.manage' } },
-      { path: 'stores',      name: 'boss-stores',      component: BossStores,      meta: { title: '店面管理',     requiresPerm: 'stores.manage' } },
-      { path: 'thresholds',  name: 'boss-thresholds',  component: BossThresholds,  meta: { title: '警示門檻',     requiresPerm: 'thresholds.manage' } },
-      { path: 'order-settings', name: 'boss-order-settings', component: BossOrderSettings, meta: { title: '訂單設定', requiresPerm: 'orders.config' } },
-      { path: 'invite',      name: 'boss-invite',      component: BossInvite,      meta: { title: '生成邀請碼',   requiresPerm: 'invite.generate' } },
-      { path: 'reports',     name: 'boss-reports',     component: BossReports,     meta: { title: '報表中心',     requiresPerm: 'reports.view' } },
+      { path: 'inventory',      name: 'boss-inventory',      component: BossInventory,     meta: { title: '檢視店面庫存', requiresPerm: 'inventory.view' } },
+      { path: 'ingredients',    name: 'boss-ingredients',    component: BossIngredients,   meta: { title: '食材資料',     requiresPerm: 'ingredients.view' } },
+      { path: 'rolegroups',     name: 'boss-rolegroups',     component: BossRoleGroups,    meta: { title: '群組權限',     requiresPerm: 'roles.manage' } },
+      { path: 'stores',         name: 'boss-stores',         component: BossStores,        meta: { title: '店面管理',     requiresPerm: 'stores.manage' } },
+      { path: 'thresholds',     name: 'boss-thresholds',     component: BossThresholds,    meta: { title: '警示門檻',     requiresPerm: 'thresholds.manage' } },
+      { path: 'order-settings', name: 'boss-order-settings', component: BossOrderSettings, meta: { title: '訂單設定',     requiresPerm: 'orders.config' } },
+      { path: 'invite',         name: 'boss-invite',         component: BossInvite,        meta: { title: '生成邀請碼',   requiresPerm: 'invite.generate' } },
+      { path: 'reports',        name: 'boss-reports',        component: BossReports,       meta: { title: '報表中心',     requiresPerm: 'reports.view' } },
     ],
   },
 
@@ -73,84 +75,91 @@ const routes = [
     meta: { requiresAuth: true, role: 'Employee' },
     children: [
       { path: '', redirect: { name: 'emp-inventory' } },
-      { path: 'inventory', name: 'emp-inventory', component: EmpInventory,
-        meta: { title: '門市庫存', requiresPerm: 'inventory.view', forceScopeStore: true } },
-      { path: 'orders',    name: 'emp-orders',    component: EmpOrders,
-        meta: { title: '訂單情況', requiresPerm: 'orders.view',    forceScopeStore: true } },
-      { path: 'reports',   name: 'emp-reports',   component: EmpReports,
-        meta: { title: '檢視報表', requiresPerm: 'reports.view',   forceScopeStore: true } },
-      { path: 'delivery',  name: 'emp-delivery',  component: EmpDelivery,
-        meta: { title: '配送情況', requiresPerm: 'delivery.view',  forceScopeStore: true } },
+      { path: 'inventory', name: 'emp-inventory', component: EmpInventory, meta: { title: '門市庫存', requiresPerm: 'inventory.view', forceScopeStore: true } },
+      { path: 'orders',    name: 'emp-orders',    component: EmpOrders,    meta: { title: '訂單情況', requiresPerm: 'orders.view',    forceScopeStore: true } },
+      { path: 'reports',   name: 'emp-reports',   component: EmpReports,   meta: { title: '檢視報表', requiresPerm: 'reports.view',   forceScopeStore: true } },
+      { path: 'delivery',  name: 'emp-delivery',  component: EmpDelivery,  meta: { title: '配送情況', requiresPerm: 'delivery.view',  forceScopeStore: true } },
     ],
   },
 
   // 中央廚房端
   {
     path: '/kitchen',
-    component: Kitchen, // 你貼的 Kitchen.vue（外殼 + <router-view/>）
+    component: Kitchen,
     meta: { requiresAuth: true, role: 'Kitchen' },
     children: [
-      { path: '', redirect: { name: 'kitchen-orders' } }, // 首頁導到訂單
-      { path: 'manage',   name: 'kitchen-manage',   component: KOrders,   meta: { title: '中央廚房總覽', requiresPerm: 'kitchen.manage' } },
-      { path: 'orders',   name: 'kitchen-orders',   component: KOrders,   meta: { title: '訂單管理',     requiresPerm: 'kitchen.manage' } },
-      { path: 'records',  name: 'kitchen-records',  component: KRecords,  meta: { title: '生產紀錄',     requiresPerm: 'kitchen.manage' } },
-      { path: 'requests', name: 'kitchen-requests', component: KRequests, meta: { title: '原料申請',     requiresPerm: 'kitchen.manage' } },
+      { path: '', redirect: { name: 'kitchen-orders' } },
+      { path: 'manage',  name: 'kitchen-manage',  component: KOrders,   meta: { title: '中央廚房總覽', requiresPerm: 'kitchen.manage' } },
+      { path: 'orders',  name: 'kitchen-orders',  component: KOrders,   meta: { title: '訂單管理',     requiresPerm: 'kitchen.manage' } },
+      { path: 'records', name: 'kitchen-records', component: KRecords,  meta: { title: '生產紀錄',     requiresPerm: 'kitchen.manage' } },
+      { path: 'requests',name: 'kitchen-requests',component: KRequests, meta: { title: '原料申請',     requiresPerm: 'kitchen.manage' } },
     ],
   },
 
-  // 全域系統設定（三角色都可進，依權限控管實際能改的區塊）
+  // 系統設定（需登入）
   { path: '/settings', name: 'system-settings', component: SystemSettings, meta: { title: '系統設定', requiresAuth: true } },
 
+  // 404
   { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFound, meta: { title: '頁面不存在' } },
 ]
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
-  // 回頂端即可（若你想保留返回位置，再改回 savedPosition 判斷）
   scrollBehavior: () => ({ top: 0 }),
 })
 
-// 守門：登入 / 角色 / 權限檢查
-router.beforeEach((to, _from, next) => {
+// return-style 守衛：避免 next 重複呼叫造成迴圈
+router.beforeEach((to) => {
   const { state } = useAuth()
   const { state: roleState } = useRoleStore()
 
-  const authed = !!state?.authed
-  const needAuth = to.matched.some(r => r.meta?.requiresAuth)
-  const needRole = to.matched.find(r => r.meta?.role)?.meta?.role
-  const needPerm = to.matched.find(r => r.meta?.requiresPerm)?.meta?.requiresPerm
+  const authed    = !!state?.authed
+  const userRole  = roleState?.role || null
+  const userPerms = Array.isArray(roleState?.perms) ? roleState.perms : []
 
-  // 未登入但需要授權 → 去登入
-  if (needAuth && !authed) return next({ name: 'login' })
+  const requiresAuth = to.matched.some(r => r.meta && r.meta.requiresAuth)
+  const roleRec      = to.matched.find(r => r.meta && r.meta.role)
+  const needRole     = roleRec?.meta?.role
+  const permRec      = to.matched.find(r => r.meta && r.meta.requiresPerm)
+  const needPerm     = permRec?.meta?.requiresPerm
 
-  // 角色不符 → 導回各自首頁
-  if (needRole && roleState.role !== needRole) {
-    return next(defaultRouteByRole(roleState.role))
+  // 已登入者禁止進 guestOnly（login / register）
+  if (to.meta && to.meta.guestOnly && authed) {
+    const target = defaultRouteByRole(userRole)
+    if (to.name === target.name) return true
+    return target
+  }
+
+  // 需要登入但未登入 → 導 login（避免自我重導）
+  if (requiresAuth && !authed) {
+    if (to.name === 'login') return true
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  // 角色不符
+  if (needRole && userRole && userRole !== needRole) {
+    const target = defaultRouteByRole(userRole)
+    if (to.name === target.name) return true
+    return target
   }
 
   // 權限不足
-  if (needPerm && Array.isArray(roleState?.perms)) {
-    if (!roleState.perms.includes(needPerm)) {
-      return next(defaultRouteByRole(roleState.role))
-    }
+  if (needPerm && userPerms.length > 0 && !userPerms.includes(needPerm)) {
+    const target = defaultRouteByRole(userRole)
+    if (to.name === target.name) return true
+    return target
   }
 
-  // 已登入但點登入頁 → 導回角色首頁
-  if (authed && to.name === 'login') {
-    return next(defaultRouteByRole(roleState.role))
-  }
-
-  next()
+  return true
 })
 
 router.afterEach((to) => {
   const base = '餐易館'
-  document.title = to.meta?.title ? `${to.meta.title}｜${base}` : base
+  document.title = to.meta && to.meta.title ? `${to.meta.title}｜${base}` : base
 })
 
 export default router
-
 
 
 //npm install

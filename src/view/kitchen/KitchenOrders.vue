@@ -1,3 +1,4 @@
+<!-- KitchenOrders.vue -->
 <template>
   <section class="kitchen-page">
     <!-- 頁首 -->
@@ -15,38 +16,45 @@
           <option v-for="s in db.stores" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
 
-        <input type="date" class="input sm date" v-model="dateStr" @change="persistFilter">
+        <input
+          type="date"
+          class="input sm date"
+          v-model="dateStr"
+          @change="persistFilter"
+        />
 
         <div class="chips">
           <button
             v-for="tg in tags"
             :key="tg"
             class="chip"
-            :class="{ on: tagFilter.has(tg) }"
+            :class="{on: tagFilter.has(tg)}"
             @click="toggleTag(tg)"
-          >{{ tg }}</button>
+          >
+            #{{ tg }}
+          </button>
         </div>
       </div>
 
       <div class="spacer"></div>
 
-      <button class="btn primary small" @click="doGenerateTodayOrder">
-        生成今日訂單
-      </button>
+      <div class="row gap">
+        <button class="btn" @click="doGenerateTodayOrder">生成今日訂單</button>
 
-      <button class="btn ghost small only-mobile" @click="drawerOpen = true">清單</button>
+        <button class="btn ghost small only-mobile" @click="drawerOpen = true">訂單列表 ☰</button>
+      </div>
     </div>
 
-    <!-- 主體 -->
+    <!-- 主體區塊：左清單 + 右內容 -->
     <div class="k-grid">
-      <!-- 左側清單 -->
-      <aside class="k-side" :class="{ open: drawerOpen }">
+      <!-- 左欄：訂單列表 -->
+      <aside class="k-side" :class="{open: drawerOpen}">
         <div class="side-list">
           <div
             class="side-item"
             v-for="o in filteredOrders"
             :key="o.id"
-            :class="{ active: o.id === selectedId }"
+            :class="{active: o.id===selectedId}"
             @click="selectLeft(o.id)"
           >
             <div class="grow">
@@ -84,9 +92,20 @@
           <div class="spacer"></div>
 
           <div class="row gap" v-if="currentOrder">
-            <button class="btn" @click="doRecalc">數量校正</button>
-            <button class="btn ghost" @click="doDuplicate">複製到其他門市</button>
-            <button class="btn primary" @click="doCloseOrder">完成並存檔</button>
+            <button
+              class="btn"
+              @click="recalcOrder(currentOrder)"
+            >重新計算</button>
+
+            <button
+              class="btn primary"
+              @click="doDuplicate"
+            >複製到其他門市</button>
+
+            <button
+              class="btn ghost"
+              @click="doClose"
+            >設定為完成出貨</button>
           </div>
         </div>
 
@@ -103,7 +122,11 @@
             <div>日期：{{ currentOrder.date }}</div>
           </div>
 
-          <div v-for="group in groupedOrd" :key="group.name" class="section">
+          <div
+            class="section"
+            v-for="group in groupedOrd"
+            :key="group.name"
+          >
             <div class="sec-title">{{ group.name }}</div>
             <div class="table">
               <div class="th">
@@ -146,10 +169,6 @@
               <div class="summary-label">品項數</div>
               <div class="summary-value">{{ currentOrder.items.length }}</div>
             </div>
-            <div class="summary-box">
-              <div class="summary-label">狀態</div>
-              <div class="summary-value status-chip">準備中</div>
-            </div>
           </div>
         </div>
       </main>
@@ -157,9 +176,9 @@
 
     <!-- 底部工具列 -->
     <footer class="footer-bar glass">
-      <div class="tagline">中央廚房・配貨與出貨整單</div>
+
+      <div class="tagline">中央廚房・今日訂單與出貨進度</div>
       <div class="spacer"></div>
-  
       <div class="footer-actions">
         <button class="btn ghost small" @click="exportJSON">匯出 JSON</button>
         <label class="btn ghost small file-btn">
@@ -169,7 +188,7 @@
       </div>
     </footer>
 
-    <!-- 提示 -->
+    <!-- Toast -->
     <transition name="fade">
       <div v-if="toast" class="toast">{{ toast }}</div>
     </transition>
@@ -194,44 +213,45 @@ const {
   exportJSON,
   importJSONFile,
   setMode, // 由系統設定控制資料來源：local / firebase
+  dataSourceMode,
 } = useKitchenData()
 
 const router = useRouter()
-const route = useRoute()
+const route  = useRoute()
+
 const toast = ref('')
+function tip(msg){ toast.value = msg; setTimeout(() => toast.value='', 1400) }
 
-const drawerOpen = ref(false)
-const selectedId = ref(route.query.focus || null)
+const drawerOpen      = ref(false)
+const selectedId      = ref(null)
 const selectedStoreId = ref(localStorage.getItem('km-store') || '')
-const dateStr = ref(localStorage.getItem('km-date') || new Date().toISOString().slice(0, 10))
-const tags = ['熟食區', '雜項區']
-const tagFilter = reactive(new Set())
+const dateStr         = ref(localStorage.getItem('km-date')  || new Date().toISOString().slice(0,10))
+const tags            = ['熟食區','雜項區']
+const tagFilter       = reactive(new Set())
 
-function tip(msg){ toast.value = msg; setTimeout(() => (toast.value = ''), 1400) }
+const modeLocal = computed({
+  get:()=> dataSourceMode.value,
+  set:(v)=>{ setMode(v); tip('資料來源模式已切換') }
+})
 
-/* 儲存篩選條件 */
 function persistFilter(){
-  localStorage.setItem('km-store', selectedStoreId.value)
-  localStorage.setItem('km-date', dateStr.value)
+  localStorage.setItem('km-store', selectedStoreId.value||'')
+  localStorage.setItem('km-date',  dateStr.value||'')
 }
 
-/* Tag 選擇 */
-function toggleTag(tg){
-  tagFilter.has(tg) ? tagFilter.delete(tg) : tagFilter.add(tg)
-}
-
-/* 過濾訂單 */
-const filteredOrders = computed(() =>
-  db.orders
+const filteredOrders = computed(()=>{
+  return db.orders
     .filter(o => !selectedStoreId.value || o.storeId === selectedStoreId.value)
     .filter(o => o.date === dateStr.value)
-    .filter(o => !tagFilter.size || o.items.some(it => tagFilter.has(it.cat)))
-    .sort((a, b) => (a.storeId > b.storeId ? 1 : -1))
-)
-const currentOrder = computed(() => db.orders.find(o => o.id === selectedId.value) || null)
+    .filter(o => !tagFilter.size || o.items.some(it=> tagFilter.has(it.cat)))
+    .sort((a,b)=> a.storeId > b.storeId ? 1 : -1)
+})
 
-/* 依分類分組 */
-const groupedOrd = computed(() => {
+const currentOrder = computed(() =>
+  db.orders.find(o => o.id === selectedId.value) || null
+)
+
+const groupedOrd = computed(()=>{
   if (!currentOrder.value) return []
   const g = {}
   currentOrder.value.items.forEach(it => {
@@ -247,39 +267,64 @@ function selectLeft(id){ selectedId.value = id; drawerOpen.value = false }
 function doGenerateTodayOrder(){
   const sid = selectedStoreId.value || (db.stores[0]?.id || '')
   const date = dateStr.value
-  if (!sid){ tip('沒有可用的門市'); return }
-  const res = generateTodayOrderForStore(sid, date)
-  tip(res.msg)
-  if (res.ok) selectedId.value = res.newOrderId
+  const newId = generateTodayOrderForStore(sid, date)
+  if (newId){
+    selectedId.value = newId
+    tip('已生成今日訂單')
+  }else{
+    tip('沒有對應請貨單，無法產生訂單')
+  }
 }
-function doRecalc(){
-  if (!currentOrder.value) return
-  recalcOrder(currentOrder.value)
-  tip('數量已校正')
-}
+
 function doDuplicate(){
-  const res = duplicateToOtherStores(currentOrder.value)
-  tip(res.msg)
+  if (!currentOrder.value) return
+  duplicateToOtherStores(currentOrder.value)
+  tip('已複製到其他門市')
 }
-function doCloseOrder(){
-  const res = closeOrder(currentOrder.value)
-  tip(res.msg)
-  if (res.ok) selectedId.value = null
+
+function doClose(){
+  if (!currentOrder.value) return
+  const ok = closeOrder(currentOrder.value)
+  tip(ok ? '已設定為完成出貨' : '無法設定為已完成')
 }
+
+/* Tag 切換 */
+function toggleTag(tg){
+  tagFilter.has(tg) ? tagFilter.delete(tg) : tagFilter.add(tg)
+}
+
+/* 狀態文字 */
+function statusText(s){
+  if (s === 'pending') return '待處理'
+  if (s === 'partial') return '部分就緒'
+  if (s === 'done')    return '完成'
+  return s || '—'
+}
+
+/* 匯出 / 匯入 JSON */
 function onImportJSON(e){
   const f = e.target.files?.[0]
   if (!f) return
-  importJSONFile(f, () => tip('已匯入資料'), () => tip('匯入失敗：格式錯誤'))
+  importJSONFile(
+    f,
+    ()=>tip('已匯入資料'),
+    ()=>tip('匯入失敗：格式錯誤')
+  )
 }
 
-/* 初始化：以系統設定為準；這裡先預設 local（seedData），若你的全域設定切到 firebase，系統會在外層呼叫 setMode('firebase') 後再進來 */
+/* 系統設定 / 回主頁 */
+function goSettings(){
+  router.push('/settings')
+}
+function goHome(){
+  router.push({ name:'boss-inventory' })
+}
+
+/* 初始化：預設讀取 seedData（local）。若全域已切到 Firebase，外層會呼叫 setMode('firebase') 後再進來，亦可正常運作。 */
 onMounted(async () => {
   setMode('local')
   await fetchAll()
 })
-
-/* 導回主頁 */
-function goHome(){ router.push({ name: 'boss-inventory' }) }
 </script>
 
 <style scoped>
@@ -340,6 +385,7 @@ function goHome(){ router.push({ name: 'boss-inventory' }) }
 .empty-state{border:1px dashed var(--border);border-radius:12px;padding:22px 16px;background:transparent;text-align:center;}
 .empty-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;}
 
+/* 單據紙卡 */
 .paper{border:1px solid var(--border);border-radius:12px;overflow:hidden;}
 .paper-head{display:flex;justify-content:space-between;background:rgba(0,0,0,.03);padding:12px 16px;border-bottom:1px dashed var(--border);}
 .section{padding:16px;}
@@ -359,7 +405,7 @@ function goHome(){ router.push({ name: 'boss-inventory' }) }
 
 /* ---------- Chips ---------- */
 .chips{display:flex;flex-wrap:wrap;gap:8px;}
-.chip{border:1px solid var(--border);border-radius:999px;background:transparent;padding:6px 12px;cursor:pointer;font-size:13px;color:var(--text);transition:.12s;}
+.chip{border:1px solid var(--border);border-radius:999px;background:transparent;padding:6px 10px;cursor:pointer;font-size:13px;color:var(--text);transition:.12s;}
 .chip:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(0,0,0,.06);}
 .chip.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.15);}
 

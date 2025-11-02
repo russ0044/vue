@@ -59,19 +59,6 @@
       </div>
 
       <div class="spacer"></div>
-
-      <!-- 右側小資訊：目前模式 / 主題指示 -->
-      <div class="right-info">
-        <div class="hint-block">
-          <div class="hint-label">資料來源</div>
-          <div class="hint-value">{{ currentModeLabel }}</div>
-        </div>
-
-        <div class="hint-block">
-          <div class="hint-label">主題</div>
-          <div class="hint-value">{{ isDark ? '深色' : '淺色' }}</div>
-        </div>
-      </div>
     </header>
 
     <!-- 主要卡片：表格 -->

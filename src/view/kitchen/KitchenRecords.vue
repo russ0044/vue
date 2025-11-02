@@ -1,3 +1,4 @@
+<!-- KitchenRecords.vue -->
 <template>
   <section class="kitchen-page">
     <!-- 頁首 -->
@@ -15,35 +16,41 @@
           <option v-for="s in db.stores" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
 
-        <input type="date" class="input sm date" v-model="dateStr" @change="persistFilter">
+        <input
+          type="date"
+          class="input sm date"
+          v-model="dateStr"
+          @change="persistFilter"
+        />
       </div>
 
       <div class="spacer"></div>
 
-      <!-- 手機清單切換 -->
-      <button class="btn ghost small only-mobile" @click="drawerOpen = true">清單</button>
+      <div class="row gap">
+        <button class="btn ghost small only-mobile" @click="drawerOpen = true">清單 ☰</button>
+      </div>
     </div>
 
     <!-- 主體 -->
     <div class="k-grid">
       <!-- 左側清單 -->
-      <aside class="k-side" :class="{ open: drawerOpen }">
+      <aside class="k-side" :class="{open: drawerOpen}">
         <div class="side-list">
           <div
             class="side-item"
             v-for="rec in filteredRecords"
             :key="rec.id"
-            :class="{ active: rec.id === selectedId }"
+            :class="{active: rec.id === selectedId}"
             @click="selectLeft(rec.id)"
           >
             <div class="grow">
               <div class="name"><strong>{{ storeName(rec.storeId) }}</strong></div>
-              <div class="muted small">{{ rec.date }}｜{{ rec.summary }}</div>
+              <div class="muted small">{{ rec.date }}｜{{ rec.items.length }} 筆</div>
             </div>
             <div class="badge">紀錄</div>
           </div>
 
-          <p v-if="!filteredRecords.length" class="muted center side-empty">目前沒有出貨紀錄</p>
+          <p v-if="!filteredRecords.length" class="muted center side-empty">無出貨紀錄</p>
         </div>
       </aside>
 
@@ -79,7 +86,7 @@
           </div>
 
           <div class="section">
-            <div class="sec-title">詳細清單</div>
+            <div class="sec-title">出貨清單</div>
 
             <div class="table">
               <div class="th">
@@ -89,11 +96,15 @@
                 <div class="grow">備註</div>
               </div>
 
-              <div class="tr" v-for="it in currentRecord.items" :key="it.key">
+              <div
+                v-for="it in currentRecord.items"
+                :key="it.key"
+                class="tr"
+              >
                 <div class="w200">{{ it.name }}</div>
                 <div class="w90">{{ it.unit }}</div>
                 <div class="w120">{{ it.qty }}</div>
-                <div class="grow">{{ it.note || '—' }}</div>
+                <div class="grow">{{ it.note }}</div>
               </div>
             </div>
           </div>
@@ -103,12 +114,13 @@
 
     <!-- 底部工具列 -->
     <footer class="footer-bar glass">
-      <div class="tagline">中央廚房・出貨留檔與查詢</div>
+
+      <div class="tagline">中央廚房・批次 / 產量 / 追溯</div>
       <div class="spacer"></div>
       <div class="footer-actions">
-        <button class="btn ghost small" @click="exportJSON">匯出資料</button>
+        <button class="btn ghost small" @click="exportJSON">匯出 JSON</button>
         <label class="btn ghost small file-btn">
-          匯入資料
+          匯入 JSON
           <input type="file" accept="application/json" @change="onImportJSON">
         </label>
       </div>
@@ -144,35 +156,38 @@ const selectedId      = ref(null)
 const selectedStoreId = ref(localStorage.getItem('km-store') || '')
 const dateStr         = ref(localStorage.getItem('km-date')  || new Date().toISOString().slice(0,10))
 
-/* 篩選條件儲存 */
 function persistFilter(){
-  localStorage.setItem('km-store', selectedStoreId.value)
-  localStorage.setItem('km-date',  dateStr.value)
+  localStorage.setItem('km-store', selectedStoreId.value||'')
+  localStorage.setItem('km-date',  dateStr.value||'')
 }
 
-/* 記錄清單過濾（到所選日期為止） */
-const filteredRecords = computed(() =>
-  db.records
+const filteredRecords = computed(()=>{
+  return db.records
     .filter(r => !selectedStoreId.value || r.storeId === selectedStoreId.value)
-    .filter(r => !dateStr.value || r.date <= dateStr.value)
-    .sort((a,b) => (a.date > b.date ? -1 : 1))
-)
+    .filter(r => r.date === dateStr.value)
+    .sort((a,b)=> a.storeId > b.storeId ? 1 : -1)
+})
 
-const currentRecord = computed(() => db.records.find(o => o.id === selectedId.value) || null)
+const currentRecord = computed(() =>
+  db.records.find(r=> r.id===selectedId.value) || null
+)
 
 function selectLeft(id){
   selectedId.value = id
   drawerOpen.value = false
 }
 
-/* 匯入 JSON */
+/* 匯出 / 匯入 */
+function exportJSONClick(){
+  exportJSON()
+}
 function onImportJSON(e){
   const f = e.target.files?.[0]
-  if (!f) return
+  if(!f) return
   importJSONFile(
     f,
-    () => tip('已匯入資料'),
-    () => tip('匯入失敗：格式錯誤')
+    ()=>tip('匯入完成'),
+    ()=>tip('匯入失敗')
   )
 }
 

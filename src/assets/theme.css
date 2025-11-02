@@ -1,110 +1,194 @@
-/* src/assets/theme.css */
-/* 基礎變數（亮色） */
+/* ===== 基礎 Reset / 版面基底 ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+}
+
+/* ===== 主題變數：亮色（預設） =====
+   （說明）預設情況下 <html> 會套用 :root 的變數
+*/
 :root {
-  --bg: #f6f8fc;
-  --card: #ffffff;
-  --border: #e6eaf2;
-  --text: #0f172a;
-  --muted: #64748b;
-  --accent: #2563eb; /* 由 store 注入 */
-  --accent-weak: #e6f4ff;
-  --chip: #fff;
-  --chip-border: #e6eaf2;
-  --shadow: 0 10px 20px rgba(2, 6, 23, 0.05);
+  --bg: #f7f7f8;
+  --text: #111827;
+  --muted: #6b7280;
+
+  --card-bg: #ffffff;
+  --border: #e5e7eb;
+
+  --thead-bg: #f1f5f9;
+  --thead-text: #1f2937;
+  --hover-bg: #f9fafb;
+
+  --primary: #2563eb;
+  --primary-weak: #e0e7ff;
 }
 
-/* 暗色 */
-:root[data-theme="dark"]{
-  --bg: #0b1220;
-  --card: #0f172a;
-  --border: #1f2a44;
-  --text: #e5e7eb;
+/* ===== 主題變數：暗色模式 =====
+   （說明）只要在 <html> 或 documentElement 上加 class "dark"
+   例如：document.documentElement.classList.add('dark')
+*/
+:root.dark {
+  --bg: #0f172a;
+  --text: #e2e8f0;
   --muted: #94a3b8;
-  --accent-weak: #12213d;
-  --chip: #0f172a;
-  --chip-border: #2a3550;
-  --shadow: 0 10px 22px rgba(0,0,0,.35);
+
+  --card-bg: #1e293b;
+  --border: #334155;
+
+  --thead-bg: #1e293b;
+  --thead-text: #f1f5f9;
+  --hover-bg: #273549;
+
+  --primary: #60a5fa;
+  --primary-weak: #1e2a44;
 }
 
-/* 元件密度（行高/間距） */
-:root[data-density="compact"] {
-  --space: 6px;
-  --pad: 8px;
-}
-:root:not([data-density="compact"]) {
-  --space: 8px;
-  --pad: 10px;
+/* ===== 全域背景 / 文字顏色 / 過場 ===== */
+body {
+  background: var(--bg);
+  color: var(--text);
+  transition: background 0.25s, color 0.25s;
 }
 
-/* 將你現有共用類別綁到變數（不動版型） */
-body { background: var(--bg); color: var(--text); }
-
-.card{
-  background: var(--card);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding: var(--pad);
-  box-shadow: var(--shadow);
-}
-.card-lite{
-  background: var(--card);
-  border:1px dashed var(--border);
-  border-radius:12px;
-  padding: calc(var(--pad) - 2px);
+/* ===== 卡片通用樣式 ===== */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  padding: 16px;
 }
 
-.btn{
-  border:1px solid color-mix(in oklab, var(--accent), #ccd7ff 65%);
-  color: var(--accent);
-  background: var(--card);
-  border-radius:10px;
-  padding: calc(var(--pad) - 2px) 12px;
-  cursor:pointer;
+/* ===== 輸入框（input, select, textarea 可共用此 class） ===== */
+.input {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.2;
+  outline: none;
+  transition: border-color 0.2s;
 }
-.btn.primary{
-  background: var(--accent);
-  border-color: var(--accent);
+
+.input:focus {
+  border-color: var(--primary);
+}
+
+/* ===== 按鈕樣式 ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.2;
+  transition: 0.2s;
+}
+
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
   color: #fff;
 }
-.btn.ghost{
+
+.btn.ghost {
+  background: var(--card-bg);
   border-color: var(--border);
   color: var(--text);
-  background: var(--card);
 }
-.btn.small{ padding: 6px 10px; }
 
-.input{
-  outline:none;
-  background: var(--card);
+.btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ===== Segment / 選擇切換鈕群組 ===== */
+.seg {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.segbtn {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.2;
+  transition: 0.15s;
   color: var(--text);
-  border:1px solid var(--border);
-  border-radius:10px;
-  padding: calc(var(--pad) - 2px) 10px;
-}
-.input:focus{ border-color: color-mix(in oklab, var(--accent), white 70%); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 85%); }
-
-.tab{ border:1px solid var(--border); background: var(--card); }
-.tab.active{ background: var(--accent-weak); border-color: color-mix(in oklab, var(--accent), #cde 40%); }
-
-.chip{
-  border:1px solid var(--chip-border);
-  background: var(--chip);
-  border-radius:999px;
-  padding: 6px 10px;
-}
-.chip.on{
-  background: var(--accent-weak);
-  border-color: color-mix(in oklab, var(--accent), #cde 40%);
 }
 
-.state-btn{ border:1px solid var(--border); background: var(--card); }
+.segbtn.active {
+  background: var(--primary-weak);
+  border-color: var(--primary);
+  color: var(--primary);
+}
 
-/* 表格文字顏色調整 */
-.table th, .table td { color: var(--text); border-bottom: 1px solid var(--border); }
-.muted{ color: var(--muted); }
+/* ===== 表格樣式（thead / hover） ===== */
+.table th {
+  background: var(--thead-bg);
+  color: var(--thead-text);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-weight: 500;
+  font-size: 14px;
+  padding: 8px 12px;
+}
 
-/* 讓主版面與側欄維持原排版，但自動吃主題色 */
-aside, .inv-side, .rep-page, .inv-page { background: var(--bg); }
+.table td {
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  padding: 8px 12px;
+  color: var(--text);
+}
 
-/* 可選：對左側固定總功能欄樣式可以僅覆蓋色彩，不改尺寸 */
-#global-sidebar { background: var(--card); border-right: 1px solid var(--border); }
+.table tr:hover td {
+  background: var(--hover-bg);
+}
+
+/* ===== 淡文字 ===== */
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* ===== Toast / 通知小框 ===== */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  font-size: 14px;
+  line-height: 1.3;
+}
