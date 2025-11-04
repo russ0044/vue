@@ -1,5 +1,5 @@
 <template>
-  <section class="inventory-container" :class="{ dark: isDark }">
+  <section class="inventory-container">
     <div class="header">
       <h2 class="section-title">店面庫存</h2>
       <button class="btn ghost" @click="goHome" title="返回主頁">返回主頁</button>
@@ -89,19 +89,14 @@ function ensureContainers() {
 ensureContainers()
 
 onMounted(() => {
-  // 訂閱資料源（假資料／Firebase 皆適用）
   unsub = ds.subscribe?.((snap) => {
     Object.assign(view, snap || {})
     ensureContainers()
     initDefaultStore()
     loading.value = false
   })
-  // 首次載入也要做一次初始化
   initDefaultStore()
   loading.value = false
-
-  // 主題同步
-  if (isDark.value) document.documentElement.classList.add('dark')
 })
 onBeforeUnmount(() => unsub?.())
 
@@ -110,10 +105,8 @@ const storeId = ref('')
 const q = ref('')
 const sortBy = ref('name')
 const asc = ref(true)
-const isDark = ref((localStorage.getItem('theme') || 'auto') === 'dark')
 
 function initDefaultStore(){
-  // 若目前未選或選到不存在的 id，就依設定或第一家帶入
   const ids = new Set((view.stores || []).map(s => toStr(s.id)))
   const current = storeId.value
   if (!current || !ids.has(current)) {
@@ -214,8 +207,6 @@ function safeNum(v){ const n = Number(v); return Number.isFinite(n) ? n : 0 }
 
 function goHome(){
   try {
-    // 若專案有 router
-    // eslint-disable-next-line no-eval
     const r = (eval('window.__app_router__')) || null
     if (r?.push) { r.push('/'); return }
   } catch {}
@@ -260,15 +251,15 @@ function goHome(){
   padding: 6px 12px;
   border-radius: 8px;
   border: none;
-  background: #2563eb;
+  background: var(--primary);
   color: #fff;
   cursor: pointer;
   font-size: 14px;
 }
 .btn.ghost {
-  background: #e5e7eb;
-  color: #111827;
-  border: 1px solid #e6eaf2;
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
 .card {
@@ -310,25 +301,5 @@ function goHome(){
 
 .muted { color: var(--muted); }
 
-:root {
-  --bg: #f9fafb;
-  --text: #111827;
-  --card-bg: #ffffff;
-  --border: #e5e7eb;
-  --thead-bg: #f1f5f9;
-  --thead-text: #1f2937;
-  --hover-bg: #f9fafb;
-  --muted: #6b7280;
-}
-
-.dark {
-  --bg: #0f172a;
-  --text: #e2e8f0;
-  --card-bg: #1e293b;
-  --border: #334155;
-  --thead-bg: #1e293b;
-  --thead-text: #f1f5f9;
-  --hover-bg: #273549;
-  --muted: #94a3b8;
-}
+.center { text-align: center; }
 </style>

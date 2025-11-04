@@ -1,5 +1,5 @@
 <template>
-  <section class="inv-page" :class="{ dark: isDark }">
+  <section class="inv-page">
     <header class="inv-header">
       <div class="title">食材資料</div>
       <div class="spacer"></div>
@@ -25,7 +25,7 @@
           <div class="side-tools">
             <div class="search">
               <span>{{ tab==='tags' ? '🔖' : '🔎' }}</span>
-              <input class="input" :placeholder="sideSearchPlaceholder" v-model="sideSearchModel">
+              <input class="input bare" :placeholder="sideSearchPlaceholder" v-model="sideSearchModel">
             </div>
 
             <div class="side-actions">
@@ -290,9 +290,6 @@ import * as ds from '@/store/datasource'
 
 defineOptions({ name: 'BossIngredients' })
 
-/* ---------- 與庫存頁一致的主題狀態 ---------- */
-const isDark = ref((localStorage.getItem('theme') || 'auto') === 'dark')
-
 /* ---------- UI 常數 ---------- */
 const UNITS = ['個','份','公斤','公克','公升','毫升','盒','包','罐','瓶','條']
 const placeholder = 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -331,9 +328,6 @@ onMounted(() => {
     }
     loadDataFromSource()
     ready.value = true
-
-    // 與庫存頁相同：若為深色，將 <html> 加上 .dark
-    if (isDark.value) document.documentElement.classList.add('dark')
   } catch (e) {
     errorMsg.value = String(e?.message || e)
   }
@@ -686,36 +680,73 @@ function importJSON(e){
 </script>
 
 <style scoped>
-/* —— 版面與共用 —— */
-.inv-page{padding:16px;background:#f6f8fc;min-height:100vh}
+/* —— 版面與共用（完全吃 theme.css 變數） —— */
+.inv-page{
+  padding:16px;
+  background: var(--bg);
+  min-height:100vh;
+  color: var(--text);
+}
 .inv-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .title{font-size:20px;font-weight:800}
 .spacer{flex:1}
-.card{background:#fff;border:1px solid #e6eaf2;border-radius:16px;padding:12px;margin-bottom:10px}
-.muted{color:#64748b}
+
+/* 卡片外觀用全域 .card，這裡保留列表/側欄用到的容器 */
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:12px;margin-bottom:10px}
+.muted{color:var(--muted)}
 
 /* Tabs */
 .inv-tabs{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.tab{border:1px solid #e6eaf2;background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
-.tab.active{background:#e6f4ff;border-color:#cfe9ff}
+.tab{
+  border:1px solid var(--border);
+  background:var(--card-bg);
+  color: var(--text);
+  border-radius:10px;padding:8px 12px;cursor:pointer;
+}
+.tab.active{
+  background: var(--primary-weak);
+  border-color: var(--primary);
+  color: var(--primary);
+}
 
 /* Grid */
 .inv-grid{display:grid;grid-template-columns:320px 1fr;gap:12px}
 
 /* Side */
-.inv-side{background:#fff;border:1px solid #e6eaf2;border-radius:16px;overflow:hidden;position:relative}
-.side-tools{display:flex;flex-direction:column;gap:10px;padding:10px;border-bottom:1px solid #f0f3f8}
-.search{display:flex;align-items:center;gap:6px;border:1px solid #e6eaf2;border-radius:12px;padding:0 10px;min-height:38px;background:#fbfcff}
-.input{border:none;outline:none;background:transparent}
+.inv-side{
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:16px;overflow:hidden;position:relative
+}
+.side-tools{display:flex;flex-direction:column;gap:10px;padding:10px;border-bottom:1px solid var(--border)}
+.search{
+  display:flex;align-items:center;gap:6px;
+  border:1px solid var(--border);
+  border-radius:12px;padding:0 10px;min-height:38px;background:var(--card-bg)
+}
+/* 讓搜尋框能無邊線搭配外層 */
+.input.bare{border:none;outline:none;background:transparent}
 .side-actions{display:flex;align-items:center;gap:8px;min-height:40px}
 .action-spacer{height:32px;flex:1}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
-.chip{border:1px solid #e6eaf2;border-radius:999px;background:#fff;padding:6px 10px;cursor:pointer}
-.chip.on{background:#eef2ff;border-color:#c7d2fe}
+.chip{
+  border:1px solid var(--border);border-radius:999px;background:var(--card-bg);
+  color: var(--text);
+  padding:6px 10px;cursor:pointer
+}
+.chip.on{
+  background: var(--primary-weak);
+  border-color: var(--primary);
+  color: var(--primary);
+}
 .side-list{max-height:calc(100vh - 240px);overflow:auto;padding:10px}
-.side-item{display:flex;gap:10px;align-items:center;border:1px solid #e6eaf2;border-radius:10px;padding:8px;margin-bottom:8px;cursor:pointer;background:#fff}
-.side-item.active{outline:2px solid #9ec5ff}
-.thumb{width:64px;height:48px;background-size:cover;background-position:center;border-radius:8px;border:1px solid #e6eaf2}
+.side-item{
+  display:flex;gap:10px;align-items:center;
+  border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:8px;
+  cursor:pointer;background:var(--card-bg); color: var(--text);
+}
+.side-item.active{outline:2px solid var(--primary)}
+.thumb{width:64px;height:48px;background-size:cover;background-position:center;border-radius:8px;border:1px solid var(--border)}
 .thumb.sm{width:44px;height:36px}
 
 /* Main */
@@ -727,24 +758,36 @@ function importJSON(e){
 .w200{width:200px}.w160{width:160px}.w120{width:120px}
 .ml12{margin-left:12px}
 .seg{display:flex;gap:6px}
-.segbtn{border:1px solid #e6eaf2;background:#fff;border-radius:10px;padding:6px 10px;cursor:pointer}
-.segbtn.active{background:#e6f4ff;border-color:#cfe9ff}
+.segbtn{
+  border:1px solid var(--border);background:var(--card-bg);color:var(--text);
+  border-radius:10px;padding:6px 10px;cursor:pointer
+}
+.segbtn.active{background:var(--primary-weak);border-color:var(--primary);color:var(--primary)}
 
 /* 狀態按鈕 */
-.state-btn{min-width:72px;border-radius:10px;border:1px solid #e6eaf2;padding:6px 10px;background:#fff;cursor:pointer}
+.state-btn{min-width:72px;border-radius:10px;border:1px solid var(--border);padding:6px 10px;background:var(--card-bg);cursor:pointer;color:var(--text)}
 .state-btn.available{border-color:#86efac;background:#f0fdf4;color:#166534}
 .state-btn.low{border-color:#fde68a;background:#fffbeb;color:#92400e}
 .state-btn.disabled{border-color:#fecaca;background:#fef2f2;color:#991b1b}
-.pill{display:inline-flex;gap:6px;align-items:center;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:2px 8px}
-.over-chip{margin-left:8px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:999px;padding:2px 8px}
+.pill{
+  display:inline-flex;gap:6px;align-items:center;
+  background:var(--primary-weak);border:1px solid var(--primary);
+  color: var(--primary);
+  border-radius:999px;padding:2px 8px
+}
+.over-chip{
+  margin-left:8px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:999px;padding:2px 8px
+}
 
 /* 狀況列表 */
 .status-list{max-height:calc(100vh - 260px);overflow:auto}
-.status-row{display:flex;align-items:center;gap:10px;border:1px solid #e6eaf2;border-radius:12px;padding:10px;margin-bottom:10px;background:#fff}
+.status-row{
+  display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:10px;background:var(--card-bg); color: var(--text);
+}
 .ck{display:inline-flex;align-items:center}
 .ck input{display:none}
-.ck span{width:18px;height:18px;border:1px solid #cbd5e1;border-radius:4px;display:inline-block;background:#fff;position:relative}
-.ck input:checked + span::after{content:'';position:absolute;inset:2px;background:#2563eb;border-radius:2px}
+.ck span{width:18px;height:18px;border:1px solid var(--border);border-radius:4px;display:inline-block;background:var(--card-bg);position:relative}
+.ck input:checked + span::after{content:'';position:absolute;inset:2px;background:var(--primary);border-radius:2px}
 
 /* 右側操作 */
 .right-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
@@ -754,43 +797,22 @@ function importJSON(e){
 .uploader input[type=file]{display:none}
 .thumb.xl{width:180px;height:135px;border-radius:12px}
 .fields .row{margin-bottom:10px}
-.label{min-width:80px;color:#475569}
+.label{min-width:80px;color:var(--muted)}
 .tagdock{display:flex;flex-direction:column;gap:8px}
 .taglist{display:flex;flex-wrap:wrap;gap:6px}
 .taglist .pill .x{border:none;background:transparent;cursor:pointer;opacity:.7}
 
 /* 標籤拖曳 */
-.tag-row{display:flex;align-items:center;gap:10px;border:1px solid #e6eaf2;border-radius:10px;padding:8px;background:#fff;margin-bottom:8px}
+.tag-row{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:10px;padding:8px;background:var(--card-bg);margin-bottom:8px;color:var(--text)}
 .grip{cursor:grab;opacity:.6}
 
 /* 手機抽屜 */
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:30}
 
 /* 底部工具列 */
-.bottom{max-width:1200px;margin:12px auto 0;background:#fff;border:1px solid #e6eaf2;border-radius:16px;padding:12px}
+.bottom{max-width:1200px;margin:12px auto 0;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:12px}
 
-/* —— 深色主題覆寫（沿用 .dark 機制） —— */
-:global(.dark) .inv-page{ background:#0f172a; }
-:global(.dark) .card,
-:global(.dark) .inv-side,
-:global(.dark) .side-item,
-:global(.dark) .status-row,
-:global(.dark) .tag-row,
-:global(.dark) .bottom{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
-:global(.dark) .search{ background:#0b1624; border-color:#334155; }
-:global(.dark) .input{ color:#e2e8f0; }
-:global(.dark) .tab{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
-:global(.dark) .tab.active{ background:#0b3260; border-color:#1d4ed8; }
-:global(.dark) .chip{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
-:global(.dark) .chip.on{ background:#273549; border-color:#3b82f6; }
-:global(.dark) .thumb,
-:global(.dark) .pill{ border-color:#475569; }
-:global(.dark) .muted{ color:#94a3b8; }
-:global(.dark) .segbtn{ background:#1e293b; border-color:#334155; color:#e2e8f0; }
-:global(.dark) .segbtn.active{ background:#0b3260; border-color:#1d4ed8; }
-:global(.dark) .state-btn{ background:#1e293b; border-color:#334155; }
-:global(.dark) .ck span{ background:#1e293b; border-color:#475569; }
-
+/* RWD */
 @media (max-width:1024px){
   .inv-grid{grid-template-columns:1fr}
   .inv-side{position:fixed;inset:0 auto 0 0;width:82%;max-width:340px;z-index:40;transform:translateX(-100%);transition:.2s}

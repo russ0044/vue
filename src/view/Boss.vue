@@ -7,13 +7,12 @@
       <div class="brand">
         <div class="avatar" aria-hidden="true">🏪</div>
         <div class="brand-text">
-          <div class="brand-title">某某餐飲店</div>
-          <div class="brand-sub">門市：某某餐飲-1號 (s1)</div>
+          <div class="brand-title">{{ brandName }}</div>
+          <div class="brand-sub">門市：{{ storeName }} ({{ storeId }})</div>
         </div>
       </div>
 
       <!-- 右側：操作區 -->
-      <!-- 注意：⚙ / 角色 / 登出 的樣式在 .actions 底下一致，顏色會跟主題變數走 -->
       <div class="actions">
         <button
           class="chip-btn ghost icon-only"
@@ -22,8 +21,8 @@
           aria-label="系統設定"
         >⚙</button>
 
-        <!-- 這顆可依角色改文字，例如 '門市人員'、'中央廚房人員' -->
-        <span class="chip role-chip">老闆</span>
+        <!-- 依角色顯示 -->
+        <span class="chip role-chip">{{ roleLabel }}</span>
 
         <button class="chip-btn danger" @click="onLogout">登出</button>
       </div>
@@ -34,9 +33,9 @@
       <aside class="sidebar">
         <!-- 使用者卡片 -->
         <div class="store-card">
-          <div class="store-line title">某某餐飲店</div>
-          <div class="store-line main">門市：某某餐飲-1號</div>
-          <div class="store-line sub">使用者：老闆</div>
+          <div class="store-line title">{{ brandName }}</div>
+          <div class="store-line main">門市：{{ storeName }}</div>
+          <div class="store-line sub">使用者：{{ userName }}</div>
         </div>
 
         <!-- 功能清單 -->
@@ -113,9 +112,9 @@
         <header class="page-head">
           <div class="page-title">{{ currentPageTitle }}</div>
           <div class="page-chips">
-            <span class="mini-chip ghost">管理者</span>
+            <span class="mini-chip ghost">{{ roleLabel }}</span>
             <span class="mini-chip ghost">{{ themeLabel }}</span>
-            <span class="mini-chip ghost">Local（假資料）</span>
+            <span class="mini-chip ghost">{{ dataSourceLabel }}</span>
           </div>
         </header>
 
@@ -132,56 +131,51 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/store/auth'
+import { useRoleStore } from '@/store/roleStore'
+import { useScope } from '@/store/scope'
+import * as ds from '@/store/datasource'
 
 const route = useRoute()
 const router = useRouter()
 const { logout } = useAuth()
+const { state: roleState } = useRoleStore()
+const scope = useScope()
 
-// --------------------- 主題狀態顯示 ---------------------
-// 我們不再自己操作 document.documentElement.classList，
-// 因為 main.js 已經會處理 .dark。
-// 這裡只負責「顯示目前主題字樣」和「當別的頁面修改後即時更新」。
-
+/* --------------------- 主題顯示 --------------------- */
 const themeMode = ref(localStorage.getItem('theme') || 'light')
-
-function handleStorage(e) {
-  if (e.key === 'theme') {
-    themeMode.value = e.newValue || 'light'
-  }
-}
-
-// 如果別的地方呼叫 window.setTheme(...)，本組件也需要即時刷新
-onMounted(() => {
-  window.addEventListener('storage', handleStorage)
-})
-
-// 頁面離開時清掉監聽
-onBeforeUnmount(() => {
-  window.removeEventListener('storage', handleStorage)
-})
+function handleStorage(e) { if (e.key === 'theme') themeMode.value = e.newValue || 'light' }
+onMounted(() => window.addEventListener('storage', handleStorage))
+onBeforeUnmount(() => window.removeEventListener('storage', handleStorage))
 
 const themeLabel = computed(() => {
-  // 顯示成「淺色 / 深色 / 自動」
   const mode = themeMode.value
   if (mode === 'dark') return '深色'
   if (mode === 'auto') {
-    // 判斷目前實際上是不是 dark，來加註
     const isDarkNow = document.documentElement.classList.contains('dark')
     return isDarkNow ? '自動・深色中' : '自動・淺色中'
   }
   return '淺色'
 })
 
-// --------------------- 導航相關 ---------------------
+/* --------------------- 資料來源顯示（mock / firebase） --------------------- */
+const dataSourceLabel = computed(() => {
+  const m = ds.getMode?.() || 'mock'
+  return m === 'firebase' ? 'Firebase（雲端）' : 'Local（假資料）'
+})
+
+/* --------------------- 角色 / 標籤 --------------------- */
+const roleLabel = computed(() => {
+  const r = roleState.role || 'Employee'
+  if (r === 'Boss') return '老闆'
+  if (r === 'Kitchen') return '中央廚房人員'
+  // Employee：可能是店長或一般員工，這邊用 scope.userName 區分語感
+  return scope.userName.includes('店長') ? '店長' : '門市人員'
+})
+
+/* --------------------- 導航 --------------------- */
 const currentKey = computed(() => route.path.split('/').pop() || '')
-
-function go(name) {
-  router.push(`/boss/${name}`)
-}
-
-function isActive(name) {
-  return currentKey.value === name
-}
+function go(name) { router.push(`/boss/${name}`) }
+function isActive(name) { return currentKey.value === name }
 
 const currentPageTitle = computed(() => {
   return (
@@ -200,19 +194,21 @@ const currentPageTitle = computed(() => {
   )
 })
 
-// --------------------- 功能按鈕 ---------------------
+/* --------------------- 功能按鈕 --------------------- */
 function goSettings() {
-  if (router.hasRoute('system-settings')) {
-    router.push({ name: 'system-settings' })
-  } else {
-    router.push('/settings')
-  }
+  if (router.hasRoute('system-settings')) router.push({ name: 'system-settings' })
+  else router.push('/settings')
 }
-
 function onLogout() {
   logout()
   router.push({ name: 'login' })
 }
+
+/* --------------------- 對模板輸出（來自 useScope） --------------------- */
+const brandName = computed(() => scope.brandName)
+const storeId   = computed(() => scope.storeId)
+const storeName = computed(() => scope.storeName)
+const userName  = computed(() => scope.userName)
 </script>
 
 <style scoped>

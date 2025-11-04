@@ -146,6 +146,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/store/auth'
 import { useScope } from '@/store/scope'
 import { usePerm } from '@/store/perm'
+import * as ds from '@/store/datasource'
 import seed from '@/seed/seedData' // 👉 假資料後備來源
 
 // 路由/登入/範圍/權限
@@ -160,9 +161,12 @@ perm.ensureLoaded?.() // 若有定義則呼叫
  * 假資料載入作為顯示層 fallback（不覆寫全域 store）
  * ========================= */
 const seedRef = ref(seed()) // 一份只讀副本
-// 讀取執行模式：先看 localStorage.mode，再退回 seed.runtime.mode
-const runtimeMode = ref(localStorage.getItem('mode') || seedRef.value.runtime?.mode || 'local')
-const runtimeLabel = computed(() => (runtimeMode.value === 'firebase' ? 'Firebase' : 'Local（假資料）'))
+
+// 統一資料來源顯示（與 BossShell 一致）
+const runtimeLabel = computed(() => {
+  const m = ds.getMode?.() || 'mock'
+  return m === 'firebase' ? 'Firebase' : 'Local（假資料）'
+})
 
 // 從 scope 或 seed 推導品牌/門市/使用者顯示用資訊（只顯示，不改 store）
 const storeId = computed(() => {
@@ -170,7 +174,7 @@ const storeId = computed(() => {
 })
 const storeObj = computed(() => seedRef.value.stores.find(s => s.id === storeId.value) || { id: 's1', name: '某某餐飲-1號' })
 const storeName = computed(() => scope.storeName || storeObj.value.name)
-const brandTitle = computed(() => scope.brandName || '海南雞 餐飲') // 可依產品名稱調整
+const brandTitle = computed(() => scope.brandName || '海南雞 餐飲')
 
 // 使用者名稱：優先 scope.userName，否則從 seed 找同門市的一位使用者顯示
 const userName = computed(() => {
@@ -182,13 +186,17 @@ const userName = computed(() => {
 /* =========================
  * 權限與角色顯示（店長 / 門市人員）
  * ========================= */
-function can(key){ return !!perm?.perms?.[key] }
-// 店長判斷（範例：可看報表 ＋ 可看食材主檔，但沒全域管理權）
-const isStoreManager = computed(() => {
-  const p = perm?.perms || {}
-  return !!p['reports.view'] && !!p['ingredients.view'] && !p['roles.manage'] && !p['stores.manage']
-})
-const roleLabel = computed(() => (isStoreManager.value ? '店長' : '門市人員'))
+// 單點權限防呆：若 perm 還沒 ready，回傳 false 避免報錯
+function can(key){
+  try{
+    if (typeof perm?.can === 'function') return !!perm.can(key)
+    return !!perm?.perms?.[key]
+  }catch{
+    return false
+  }
+}
+// 角色標籤安全讀取
+const roleLabel = computed(() => (perm?.isManager ? '店長' : '門市人員'))
 
 /* =========================
  * 主題處理：localStorage.theme -> 'light' / 'dark'
@@ -199,13 +207,11 @@ function updateThemeFromLocal(){
   theme.value = t === 'dark' ? 'dark' : 'light'
 }
 function onStorage(e){
-  if (e.key === 'theme')  updateThemeFromLocal()
-  if (e.key === 'mode')   runtimeMode.value = localStorage.getItem('mode') || 'local'
+  if (e.key === 'theme') updateThemeFromLocal()
+  // 資料來源切換時 runtimeLabel 由 computed + ds.getMode 自動反映
 }
 onMounted(() => {
   updateThemeFromLocal()
-  // 初次同步 mode
-  runtimeMode.value = localStorage.getItem('mode') || runtimeMode.value
   window.addEventListener('storage', onStorage)
 })
 onBeforeUnmount(() => {

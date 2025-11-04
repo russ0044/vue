@@ -1,199 +1,145 @@
 // src/store/datasource.js
-// 單一入口：統一管理資料來源 (假資料 / Firebase)
-// 任何頁面都只能 import 從這裡 export 出去的函式
+// ─────────────────────────────────────────────────────────────────────────────
+// 單一入口：統一管理資料來源（mock/local｜firebase）
+// 所有頁面、元件一律只 import 這個檔案匯出的 API。
+// - 模式記在 localStorage('ds-mode')：'mock' | 'firebase'（預設 'mock'）
+// - 各功能以「有實作就呼叫、沒有就安全提示」為原則，避免打爆 UI。
+// ─────────────────────────────────────────────────────────────────────────────
 
-import * as localImpl from './datasource/local'
-import * as fbImpl from './datasource/firebase'
+/* eslint-disable no-console */
+import * as localImpl from './datasource/local'   // 你已實作（含 seed / 角色群組 / 庫存等）
+import * as fbImpl    from './datasource/firebase' // 可為 stub；本檔已做防呆
 
-/**
- * 目前模式（'mock' | 'firebase'）
- * - 優先讀 localStorage
- * - 讀不到就 'mock'
- */
+// 目前運行模式：localStorage 優先，否則 'mock'
 let mode = (() => {
-  try {
-    return localStorage.getItem('ds-mode') || 'mock'
-  } catch {
-    return 'mock'
-  }
+  try { return localStorage.getItem('ds-mode') || 'mock' } catch { return 'mock' }
 })()
 
-/**
- * 取得目前實際在用的實作層 (localImpl or fbImpl)
- */
 function getImpl() {
-  return mode === 'firebase' ? fbImpl : localImpl
+  // 若未提供 firebase 實作，保守退回 localImpl / mock
+  if (mode === 'firebase') {
+    const hasAny =
+      typeof fbImpl?.read === 'function' ||
+      typeof fbImpl?.subscribe === 'function'
+    if (hasAny) return fbImpl
+    console.warn('[datasource] 目前模式設定為 firebase，但未找到對應實作，改用 mock/local。')
+    return localImpl
+  }
+  // mock / local 皆走 localImpl
+  return localImpl
 }
 
-/**
- * 讓外部知道現在是什麼模式（UI 可能要顯示）
- */
-export function getMode() {
-  return mode
-}
+/** 讓外部知道目前模式（UI 可顯示） */
+export function getMode() { return mode }
 
-/**
- * 在「系統設置」切換資料來源時呼叫
- * 'mock' -> 使用 seedData.js 的本地反應式資料
- * 'firebase' -> 使用 Firestore 版本（目前是 stub，至少不會壞）
- */
+/** 在「系統設置」切換資料來源時呼叫：'mock'｜'firebase' */
 export async function setMode(nextMode) {
   if (nextMode !== 'mock' && nextMode !== 'firebase') {
     console.warn('[datasource] setMode: 非法模式', nextMode)
     return
   }
   mode = nextMode
-  try {
-    localStorage.setItem('ds-mode', mode)
-  } catch (e) {
-    console.warn('[datasource] 無法寫入 localStorage ds-mode', e)
-  }
-  console.info('[datasource] 模式已切換為:', mode)
+  try { localStorage.setItem('ds-mode', mode) } catch {}
+  console.info('[datasource] 模式已切換為：', mode)
 }
 
-/*------------------------------------------------------------------------------
-  下面開始是功能轉接層
-  注意：我們所有 export 統一在這裡，頁面就不會噴 "xxx is not exported"
-------------------------------------------------------------------------------*/
+// ─────────────────────────────────────────────────────────────────────────────
+// 共同工具：有實作就呼叫；沒有就警告（不拋例外）
+// ─────────────────────────────────────────────────────────────────────────────
+function callOrWarn(fnName, ...args) {
+  const impl = getImpl()
+  const fn = impl?.[fnName]
+  if (typeof fn === 'function') return fn(...args)
+  console.warn(`[datasource] ${fnName} 尚未在「${mode}」模式實作`)
+}
 
-/**
- * 讀整包資料（stores, inventory, settings...）
- */
+function callOrWarnWithDefault(fnName, defaultValue, ...args) {
+  const impl = getImpl()
+  const fn = impl?.[fnName]
+  if (typeof fn === 'function') return fn(...args)
+  console.warn(`[datasource] ${fnName} 尚未在「${mode}」模式實作；使用預設值`, defaultValue)
+  return defaultValue
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 基本：讀取／訂閱
+// ─────────────────────────────────────────────────────────────────────────────
+/** 讀整包資料（stores, inventory, thresholds, settings, roleGroups, invites...） */
 export function read() {
-  return getImpl().read()
+  const impl = getImpl()
+  if (typeof impl.read === 'function') return impl.read()
+  console.warn('[datasource] 目前實作層沒有 read，回傳空物件')
+  return {}
 }
 
-/**
- * 訂閱資料變動（目前 localImpl 有 reactive，所以我們用它的 subscribe，如果是 mock 也要有 fallback）
- * - 若實作層沒有 subscribe，就回傳一個空的取消函式
- */
+/** 訂閱資料變動：若實作層無 subscribe，至少先丟一次快照並回傳空取消函式 */
 export function subscribe(cb) {
   const impl = getImpl()
   if (typeof impl.subscribe === 'function') {
     return impl.subscribe(cb)
   }
-  // fallback: 立即吐快照，但之後不會再推
-  cb?.(impl.read())
+  cb?.(impl.read?.() || {})
   return () => {}
 }
 
-/**
- * 店面 CRUD
- */
-export function addStore(storeObj) {
+/** （可選）有些頁面會手動要求 refresh */
+export function refresh() { return callOrWarn('refresh') }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 店面 CRUD
+// ─────────────────────────────────────────────────────────────────────────────
+export function addStore(storeObj)     { return callOrWarn('addStore', storeObj) }
+export function renameStore(id, name)  { return callOrWarn('renameStore', id, name) }
+export function deleteStore(id)        { return callOrWarn('deleteStore', id) }
+export function setDefaultStore(id)    { return callOrWarn('setDefaultStore', id) }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 使用者／邀請碼
+// ─────────────────────────────────────────────────────────────────────────────
+export function addUser(userObj)       { return callOrWarn('addUser', userObj) }
+export function emailExists(email)     { return callOrWarnWithDefault('emailExists', false, email) }
+export function verifyInvite(code)     { return callOrWarnWithDefault('verifyInvite', { ok:false, reason:'not_supported' }, code) }
+export function markInviteUsed(code)   { return callOrWarn('markInviteUsed', code) }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 角色／權限群組／門市群組（BossRoleGroups.vue 會用）
+// ─────────────────────────────────────────────────────────────────────────────
+export function upsertRoleGroup(payload)           { return callOrWarn('upsertRoleGroup', payload) }
+export function renameRole(id, newName)            { return callOrWarn('renameRole', id, newName) }
+export function deleteRoleGroup(id)                { return callOrWarn('deleteRoleGroup', id) }
+export function setStoreGroups(storeId, roleIds)   { return callOrWarn('setStoreGroups', storeId, roleIds) }
+export function duplicateStoreGroups(src, destIds) { return callOrWarn('duplicateStoreGroups', src, destIds) }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 庫存／門檻（Emp / Boss / Kitchen 3 端共用）
+// 注意：若當前模式沒實作，這些會安全地告警並不中斷 UI。
+// ─────────────────────────────────────────────────────────────────────────────
+export function upsertInventory(item)        { return callOrWarn('upsertInventory', item) }
+export function deleteInventory(storeId, sku){ return callOrWarn('deleteInventory', storeId, sku) }
+export function setThreshold(storeId, min)   { return callOrWarn('setThreshold', storeId, min) }
+
+// ─────────────────────────────────────────────────────────────────────────────
+/** （可選）產 ID：有些實作層提供 newId() */
+export function newId() {
   const impl = getImpl()
-  if (typeof impl.addStore === 'function') {
-    return impl.addStore(storeObj)
-  }
-  console.warn('[datasource] addStore 尚未在此模式實作')
+  if (typeof impl.newId === 'function') return impl.newId()
+  // fallback：簡單隨機
+  return 'id-' + Math.random().toString(36).slice(2, 10)
 }
 
-export function renameStore(id, newName) {
+// ─────────────────────────────────────────────────────────────────────────────
+// 主題／模式（視覺）代理：若資料源有 setTheme，走資料源；否則直接寫 localStorage + data-attrs
+// 讓「系統設置」可以單一呼叫這裡，確保 3 端一致。
+// ─────────────────────────────────────────────────────────────────────────────
+export function setTheme(theme) {
   const impl = getImpl()
-  if (typeof impl.renameStore === 'function') {
-    return impl.renameStore(id, newName)
-  }
-  console.warn('[datasource] renameStore 尚未在此模式實作')
+  if (typeof impl.setTheme === 'function') return impl.setTheme(theme)
+  try { localStorage.setItem('theme', theme) } catch {}
+  const root = document.documentElement
+  const final = theme === 'auto'
+    ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : theme
+  root.setAttribute('data-theme', final)
 }
 
-export function deleteStore(id) {
-  const impl = getImpl()
-  if (typeof impl.deleteStore === 'function') {
-    return impl.deleteStore(id)
-  }
-  console.warn('[datasource] deleteStore 尚未在此模式實作')
-}
-
-export function setDefaultStore(id) {
-  const impl = getImpl()
-  if (typeof impl.setDefaultStore === 'function') {
-    return impl.setDefaultStore(id)
-  }
-  console.warn('[datasource] setDefaultStore 尚未在此模式實作')
-}
-
-/**
- * 使用者 / 邀請碼 相關
- * - 老闆註冊時會新增 user
- * - 驗證邀請碼 / 標記邀請碼已用
- */
-export function addUser(userObj) {
-  const impl = getImpl()
-  if (typeof impl.addUser === 'function') {
-    return impl.addUser(userObj)
-  }
-  console.warn('[datasource] addUser 尚未在此模式實作')
-}
-
-export function emailExists(email) {
-  const impl = getImpl()
-  if (typeof impl.emailExists === 'function') {
-    return impl.emailExists(email)
-  }
-  console.warn('[datasource] emailExists 尚未在此模式實作；預設回 false')
-  return false
-}
-
-export function verifyInvite(code) {
-  const impl = getImpl()
-  if (typeof impl.verifyInvite === 'function') {
-    return impl.verifyInvite(code)
-  }
-  console.warn('[datasource] verifyInvite 尚未在此模式實作；回傳無效碼')
-  return { ok: false, reason: 'not_supported' }
-}
-
-export function markInviteUsed(code) {
-  const impl = getImpl()
-  if (typeof impl.markInviteUsed === 'function') {
-    return impl.markInviteUsed(code)
-  }
-  console.warn('[datasource] markInviteUsed 尚未在此模式實作')
-}
-
-/**
- * 角色 / 權限群組 / 門市群組
- * 供 BossRoleGroups.vue 使用
- */
-export function upsertRoleGroup(payload) {
-  const impl = getImpl()
-  if (typeof impl.upsertRoleGroup === 'function') {
-    return impl.upsertRoleGroup(payload)
-  }
-  console.warn('[datasource] upsertRoleGroup 尚未在此模式實作')
-}
-
-export function renameRole(id, newName) {
-  const impl = getImpl()
-  if (typeof impl.renameRole === 'function') {
-    return impl.renameRole(id, newName)
-  }
-  console.warn('[datasource] renameRole 尚未在此模式實作')
-}
-
-export function deleteRoleGroup(id) {
-  const impl = getImpl()
-  if (typeof impl.deleteRoleGroup === 'function') {
-    return impl.deleteRoleGroup(id)
-  }
-  console.warn('[datasource] deleteRoleGroup 尚未在此模式實作')
-}
-
-export function setStoreGroups(storeId, roleIds) {
-  const impl = getImpl()
-  if (typeof impl.setStoreGroups === 'function') {
-    return impl.setStoreGroups(storeId, roleIds)
-  }
-  console.warn('[datasource] setStoreGroups 尚未在此模式實作')
-}
-
-export function duplicateStoreGroups(srcStoreId, destIds) {
-  const impl = getImpl()
-  if (typeof impl.duplicateStoreGroups === 'function') {
-    return impl.duplicateStoreGroups(srcStoreId, destIds)
-  }
-  console.warn('[datasource] duplicateStoreGroups 尚未在此模式實作')
-}
-
-// 啟動訊息（方便除錯）
 console.info('[datasource] 啟動完成（模式：' + mode + '）')

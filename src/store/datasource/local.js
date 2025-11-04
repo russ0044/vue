@@ -7,20 +7,93 @@ import { seedData } from '@/seed/seedData'
 // 建 reactive 副本（避免直接修改 seedData 常數）
 const db = reactive(JSON.parse(JSON.stringify(seedData || {})))
 
-// 確保主要欄位存在
-db.runtime      ||= { mode: 'local', theme: localStorage.getItem('theme') || 'light' }
-db.roleGroups   ||= [
-  { id: 'RG-BOSS', name: '老闆', permissions: ['管理使用者','查看報表','庫存調整'] },
-  { id: 'RG-EMP',  name: '店員', permissions: ['入庫（進貨/退料）','出庫（銷售/領料）'] },
-  { id: 'RG-CK',   name: '中央廚房', permissions: ['調撥（門市↔中央廚房）','盤點作業'] },
-]
-db.storeGroups  ||= {}     // { [storeId]: ['RG-BOSS','RG-EMP'] }
-db.stores       ||= []
-db.inventory    ||= []
-db.thresholds   ||= []
-db.settings     ||= { store: { allowNegativeStock:false, defaultStoreId:'', defaultExpDays:3 } }
-db.users        ||= []
-db.invites      ||= []
+// 確保主要欄位存在（先用 seed，缺的再補）
+db.runtime    ||= { mode: localStorage.getItem('mode') || 'local', theme: localStorage.getItem('theme') || 'light' }
+db.storeGroups ||= {}     // { [storeId]: ['rg-boss','rg-staff'] }
+db.stores     ||= []
+db.inventory  ||= []
+db.thresholds ||= []
+db.settings   ||= { store: { allowNegativeStock:false, defaultStoreId:'', defaultExpDays:3 } }
+db.users      ||= []
+db.invites    ||= []
+
+/** 建立預設 roleGroups（小寫 id），並把 seedData 的 perms 轉成 permissions */
+function buildDefaultRoleGroupsFromSeed() {
+  if (Array.isArray(db.roleGroups) && db.roleGroups.length) {
+    // 轉換 seed 的 perms -> permissions
+    db.roleGroups = db.roleGroups.map(rg => ({
+      id: String(rg.id || '').toLowerCase(),            // 一律小寫
+      name: rg.name || '未命名群組',
+      permissions: Array.isArray(rg.permissions) ? rg.permissions.slice()
+                  : Array.isArray(rg.perms) ? rg.perms.slice()
+                  : [],
+    }))
+    return
+  }
+  // 若 seed 沒提供，給一組內建（小寫 id）
+  db.roleGroups = [
+    {
+      id: 'rg-boss',
+      name: 'Boss（老闆）',
+      permissions: [
+        'inventory.view','ingredients.view','roles.manage','stores.manage','thresholds.manage',
+        'orders.config','invite.generate','reports.view','orders.view','delivery.view','kitchen.manage',
+      ],
+    },
+    {
+      id: 'rg-store-manager',
+      name: 'StoreManager（店長）',
+      permissions: ['inventory.view','ingredients.view','orders.view','delivery.view','reports.view'],
+    },
+    {
+      id: 'rg-staff',
+      name: 'Staff（店員）',
+      permissions: ['inventory.view','orders.view'],
+    },
+    {
+      id: 'rg-kitchen',
+      name: 'Kitchen（中央廚房）',
+      permissions: ['kitchen.manage','reports.view'],
+    },
+  ]
+}
+
+/** 將舊大寫 RG- 前綴 → 新小寫 rg-xxx，並把 perms → permissions */
+function normalizeRoleGroupsAndRefs() {
+  // 角色群組先處理
+  buildDefaultRoleGroupsFromSeed()
+
+  // 建立映射表（含常見舊代碼）
+  const mapOldToNew = {
+    'RG-BOSS': 'rg-boss',
+    'RG-EMP': 'rg-staff',
+    'RG-CK': 'rg-kitchen',
+    'RG-MANAGER': 'rg-store-manager',
+  }
+
+  // 1) roleGroups：確保 id 小寫、欄位為 permissions
+  db.roleGroups = db.roleGroups.map(rg => {
+    const idRaw = String(rg.id || '')
+    const id = (mapOldToNew[idRaw] || idRaw).toLowerCase()
+    const permissions = Array.isArray(rg.permissions) ? rg.permissions.slice()
+                      : Array.isArray(rg.perms) ? rg.perms.slice()
+                      : []
+    return { id, name: rg.name || '未命名群組', permissions }
+  })
+
+  // 2) storeGroups：把陣列裡的舊 id 轉成新小寫
+  Object.keys(db.storeGroups || {}).forEach(storeId => {
+    const list = db.storeGroups[storeId] || []
+    db.storeGroups[storeId] = list.map(x => (mapOldToNew[x] || x).toLowerCase())
+  })
+
+  // 3) users：roleGroupId 轉成新小寫
+  db.users = db.users.map(u => {
+    const old = String(u.roleGroupId || '')
+    return { ...u, roleGroupId: (mapOldToNew[old] || old).toLowerCase() }
+  })
+}
+normalizeRoleGroupsAndRefs()
 
 /* ------------------ 觀察者機制 ------------------ */
 const listeners = []
@@ -34,7 +107,7 @@ function notifyAll() {
 
 /* ------------------ 公開 API ------------------ */
 
-/** 讀取完整資料快照 */
+/** 讀取完整資料快照（深拷貝，避免外部直接改 reactive 本體） */
 export function read() {
   return JSON.parse(JSON.stringify(db))
 }
@@ -99,7 +172,7 @@ export function setDefaultStore(id) {
 
 /* ------------------ 使用者 / 邀請 ------------------ */
 export function emailExists(email) {
-  return db.users.some(u => u.email?.toLowerCase() === email.toLowerCase())
+  return db.users.some(u => u.email?.toLowerCase() === String(email || '').toLowerCase())
 }
 
 export function addUser(user) {
@@ -109,7 +182,7 @@ export function addUser(user) {
     name: user.name || '未命名使用者',
     email: user.email,
     phone: user.phone || '',
-    roleGroupId: user.roleGroupId || 'RG-EMP',
+    roleGroupId: (user.roleGroupId || 'rg-staff').toLowerCase(),
     storeId: user.storeId || db.settings.store.defaultStoreId || '',
   })
   notifyAll()
@@ -117,16 +190,17 @@ export function addUser(user) {
 }
 
 export function verifyInvite(code) {
-  const inv = db.invites.find(v => v.code === code)
+  const inv = (db.invites || []).find(v => v.code === code)
   if (!inv) return { ok:false, reason:'not_found' }
   if (inv.used) return { ok:false, reason:'used' }
   const now = Date.now()
   if (inv.expiresAt && inv.expiresAt < now) return { ok:false, reason:'expired' }
-  return { ok:true, role:inv.role, storeId:inv.storeId, expiresAt:inv.expiresAt }
+  // 與 seedData 對齊：回傳 roleGroupId
+  return { ok:true, roleGroupId: inv.roleGroupId, storeId: inv.storeId, expiresAt: inv.expiresAt }
 }
 
 export function markInviteUsed(code) {
-  const inv = db.invites.find(v => v.code === code)
+  const inv = (db.invites || []).find(v => v.code === code)
   if (inv) {
     inv.used = true
     notifyAll()
@@ -135,27 +209,29 @@ export function markInviteUsed(code) {
 
 /* ------------------ 角色 / 群組 ------------------ */
 export function upsertRoleGroup(payload) {
-  if (payload.id) {
-    const tgt = db.roleGroups.find(r => r.id === payload.id)
+  // payload: { id?, name, permissions: string[] }
+  const norm = {
+    id: payload.id ? String(payload.id).toLowerCase() : null,
+    name: payload.name || '未命名群組',
+    permissions: Array.isArray(payload.permissions) ? [...payload.permissions] : [],
+  }
+  if (norm.id) {
+    const tgt = db.roleGroups.find(r => r.id === norm.id)
     if (tgt) {
-      tgt.name = payload.name
-      tgt.permissions = [...(payload.permissions || [])]
+      tgt.name = norm.name
+      tgt.permissions = norm.permissions
       notifyAll()
       return tgt.id
     }
   }
-  const newId = 'RG-' + Math.random().toString(36).slice(2, 8).toUpperCase()
-  db.roleGroups.push({
-    id: newId,
-    name: payload.name || '未命名群組',
-    permissions: [...(payload.permissions || [])],
-  })
+  const newId = 'rg-' + Math.random().toString(36).slice(2, 8)
+  db.roleGroups.push({ id: newId, name: norm.name, permissions: norm.permissions })
   notifyAll()
   return newId
 }
 
 export function renameRole(id, newName) {
-  const r = db.roleGroups.find(g => g.id === id)
+  const r = db.roleGroups.find(g => g.id === String(id || '').toLowerCase())
   if (r) {
     r.name = newName
     notifyAll()
@@ -163,21 +239,22 @@ export function renameRole(id, newName) {
 }
 
 export function deleteRoleGroup(id) {
-  db.roleGroups = db.roleGroups.filter(g => g.id !== id)
+  const rid = String(id || '').toLowerCase()
+  db.roleGroups = db.roleGroups.filter(g => g.id !== rid)
   Object.keys(db.storeGroups).forEach(storeId => {
-    db.storeGroups[storeId] = (db.storeGroups[storeId] || []).filter(rid => rid !== id)
+    db.storeGroups[storeId] = (db.storeGroups[storeId] || []).filter(x => x !== rid)
   })
   notifyAll()
 }
 
 export function setStoreGroups(storeId, roleIds) {
-  db.storeGroups[storeId] = [...roleIds]
+  db.storeGroups[storeId] = (roleIds || []).map(x => String(x).toLowerCase())
   notifyAll()
 }
 
 export function duplicateStoreGroups(srcStoreId, destIds) {
   const src = db.storeGroups[srcStoreId] || []
-  destIds.forEach(did => {
+  ;(destIds || []).forEach(did => {
     db.storeGroups[did] = [...src]
   })
   notifyAll()
@@ -219,7 +296,7 @@ export function setTheme(theme) {
 
 /* ------------------ Debug：開發環境用 ------------------ */
 if (import.meta.env?.DEV) {
-  console.log('%c[LocalDB] 假資料啟動完成', 'color:#22c55e;font-weight:bold')
+  console.log('%c[LocalDB] 假資料啟動完成 (normalized)', 'color:#22c55e;font-weight:bold')
   console.log(db)
 }
 

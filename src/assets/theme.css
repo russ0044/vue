@@ -11,9 +11,7 @@ body,
   font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
 }
 
-/* ===== 主題變數：亮色（預設） =====
-   （說明）預設情況下 <html> 會套用 :root 的變數
-*/
+/* ===== 主題變數：亮色（預設） ===== */
 :root {
   --bg: #f7f7f8;
   --text: #111827;
@@ -30,10 +28,7 @@ body,
   --primary-weak: #e0e7ff;
 }
 
-/* ===== 主題變數：暗色模式 =====
-   （說明）只要在 <html> 或 documentElement 上加 class "dark"
-   例如：document.documentElement.classList.add('dark')
-*/
+/* ===== 主題變數：暗色模式 ===== */
 :root.dark {
   --bg: #0f172a;
   --text: #e2e8f0;

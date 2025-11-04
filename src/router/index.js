@@ -1,4 +1,4 @@
-// src/router/index.js
+// src/router/index.js 〈可直接覆蓋〉
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuth } from '@/store/auth'
 import { useRoleStore } from '@/store/roleStore'
@@ -35,7 +35,7 @@ const KOrders   = () => import('@/view/kitchen/KitchenOrders.vue')
 const KRecords  = () => import('@/view/kitchen/KitchenRecords.vue')
 const KRequests = () => import('@/view/kitchen/KitchenRequests.vue')
 
-// 依角色回首頁
+// 依角色決定首頁
 function defaultRouteByRole(role) {
   if (role === 'Boss')     return { name: 'boss-inventory' }
   if (role === 'Employee') return { name: 'emp-inventory' }
@@ -44,9 +44,13 @@ function defaultRouteByRole(role) {
 }
 
 const routes = [
-  { path: '/', redirect: '/login' },
+  // ❗把根路由導到「中立首頁 /home」，避免直接去 /login 造成機率性跳回登入
+  { path: '/', redirect: { name: 'home' } },
 
-  // 不需登入（加 guestOnly，已登入時會擋）
+  // 中立首頁（統一在 beforeEach 依登入與角色導去真正首頁）
+  { path: '/home', name: 'home', meta: { title: '首頁' } },
+
+  // 不需登入（guestOnly：已登入者會被導回各自首頁）
   { path: '/login',    name: 'login',    component: LoginView,    meta: { title: '登入', guestOnly: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { title: '註冊', guestOnly: true } },
 
@@ -89,10 +93,10 @@ const routes = [
     meta: { requiresAuth: true, role: 'Kitchen' },
     children: [
       { path: '', redirect: { name: 'kitchen-orders' } },
-      { path: 'manage',  name: 'kitchen-manage',  component: KOrders,   meta: { title: '中央廚房總覽', requiresPerm: 'kitchen.manage' } },
-      { path: 'orders',  name: 'kitchen-orders',  component: KOrders,   meta: { title: '訂單管理',     requiresPerm: 'kitchen.manage' } },
-      { path: 'records', name: 'kitchen-records', component: KRecords,  meta: { title: '生產紀錄',     requiresPerm: 'kitchen.manage' } },
-      { path: 'requests',name: 'kitchen-requests',component: KRequests, meta: { title: '原料申請',     requiresPerm: 'kitchen.manage' } },
+      { path: 'manage',   name: 'kitchen-manage',   component: KOrders,   meta: { title: '中央廚房總覽', requiresPerm: 'kitchen.manage' } },
+      { path: 'orders',   name: 'kitchen-orders',   component: KOrders,   meta: { title: '訂單管理',     requiresPerm: 'kitchen.manage' } },
+      { path: 'records',  name: 'kitchen-records',  component: KRecords,  meta: { title: '生產紀錄',     requiresPerm: 'kitchen.manage' } },
+      { path: 'requests', name: 'kitchen-requests', component: KRequests, meta: { title: '原料申請',     requiresPerm: 'kitchen.manage' } },
     ],
   },
 
@@ -109,7 +113,7 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
 })
 
-// return-style 守衛：避免 next 重複呼叫造成迴圈
+// ✅ return-style 守衛：避免 next 重複呼叫造成迴圈
 router.beforeEach((to) => {
   const { state } = useAuth()
   const { state: roleState } = useRoleStore()
@@ -124,6 +128,11 @@ router.beforeEach((to) => {
   const permRec      = to.matched.find(r => r.meta && r.meta.requiresPerm)
   const needPerm     = permRec?.meta?.requiresPerm
 
+  // 🏠 對 /home 做動態首頁導向（避免去 /login 造成閃跳）
+  if (to.name === 'home') {
+    return authed ? defaultRouteByRole(userRole) : { name: 'login' }
+  }
+
   // 已登入者禁止進 guestOnly（login / register）
   if (to.meta && to.meta.guestOnly && authed) {
     const target = defaultRouteByRole(userRole)
@@ -137,14 +146,14 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  // 角色不符
+  // 角色不符 → 送回各自首頁
   if (needRole && userRole && userRole !== needRole) {
     const target = defaultRouteByRole(userRole)
     if (to.name === target.name) return true
     return target
   }
 
-  // 權限不足
+  // 權限不足（有帶權限才檢查）
   if (needPerm && userPerms.length > 0 && !userPerms.includes(needPerm)) {
     const target = defaultRouteByRole(userRole)
     if (to.name === target.name) return true
@@ -160,6 +169,7 @@ router.afterEach((to) => {
 })
 
 export default router
+
 
 
 //npm install

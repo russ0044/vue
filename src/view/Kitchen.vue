@@ -59,7 +59,7 @@
           <div class="page-title">{{ pageTitle }}</div>
           <div class="page-chips">
             <span class="mini-chip ghost">{{ themeLabel }}</span>
-            <span class="mini-chip ghost">Local（假資料）</span>
+            <span class="mini-chip ghost">{{ runtimeLabel }}</span>
           </div>
         </header>
 
@@ -75,6 +75,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
+import * as ds from '@/store/datasource'
 
 const { logout } = useAuth()
 const route = useRoute()
@@ -86,19 +87,20 @@ function onLogout() {
 }
 function goSettings() { router.push('/settings') }
 
-/* 主題（與 Boss 相同寫法） */
+/* 主題（與其它殼一致：讀 localStorage.theme + 切 html.dark） */
 const theme = computed(() => (localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'))
 const themeLabel = computed(() => (theme.value === 'dark' ? '深色' : '淺色'))
-
 function applyThemeClass() {
   const root = document.documentElement
   if (theme.value === 'dark') root.classList.add('dark')
   else root.classList.remove('dark')
 }
 const onStorage = (e) => { if (e.key === 'theme') applyThemeClass() }
-
 onMounted(() => { applyThemeClass(); window.addEventListener('storage', onStorage) })
 onUnmounted(() => { window.removeEventListener('storage', onStorage) })
+
+/* 執行模式顯示（與 Boss / Emp 統一） */
+const runtimeLabel = computed(() => (ds.getMode?.() === 'firebase' ? 'Firebase' : 'Local（假資料）'))
 
 /* 動態頁面標題、active 判定 */
 const pageTitle = computed(() => route.meta?.title || '中央廚房作業')

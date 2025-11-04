@@ -6,6 +6,17 @@ const normEmail = (e) => String(e || '').trim().toLowerCase()
 const int = (v, min = -Infinity) => Math.max(min, Math.trunc(Number(v) || 0))
 const nextId = (prefix, n) => `${prefix}${String(n + 1).padStart(3, '0')}`
 
+/* ---------- 事件訂閱（畫面即時更新用） ---------- */
+let listeners = []
+export function onChange(cb) {
+  if (typeof cb === 'function') listeners.push(cb)
+  return () => { listeners = listeners.filter(f => f !== cb) }
+}
+function notifyAll() {
+  const d = readAll()
+  listeners.forEach(fn => { try { fn(d) } catch {} })
+}
+
 /* ---------- 基礎 I/O ---------- */
 export function ensureSeed(seed) {
   if (!localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify(seed))
@@ -36,6 +47,7 @@ export function readAll() {
 }
 export function writeAll(payload) {
   localStorage.setItem(KEY, JSON.stringify(payload))
+  notifyAll()
 }
 export function update(mutator) {
   const data = readAll()
@@ -68,6 +80,12 @@ export function addStore({ name, address, phone, type = 'branch' }) {
     const id = nextId('S', d.stores.length)
     d.stores.push({ id, name, address: String(address || ''), phone: String(phone || ''), type })
     d.thresholds.push({ storeId: id, minQty: 10, expDays: 3 })
+    // 若尚未有預設店，補上
+    if (!d.settings?.store?.defaultStoreId) {
+      d.settings ??= {}
+      d.settings.store ??= {}
+      d.settings.store.defaultStoreId = id
+    }
     return d
   })
 }

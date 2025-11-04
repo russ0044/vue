@@ -28,7 +28,7 @@
           <div class="search">
             <span>🔎</span>
             <input
-              class="input"
+              class="input bare"
               v-model.trim="qList"
               placeholder="搜尋來源或日期… (草稿 / 待審核)"
             />
@@ -618,34 +618,24 @@
 import { reactive, ref, computed } from 'vue'
 import {
   read,
-  addStore,
-  // 其實這頁目前不需要 addStore，但保留匯入可以防止 firebase 模式報錯
-  // 也代表我們是透過 datasource.js 取得資料層，不直接碰 localStorage
+  addStore, // 註：保留避免 firebase 模式報錯（即便此頁暫未用到）
 } from '@/store/datasource'
 
 defineOptions({ name: 'BossOrderCenter' })
 
 /* ------------------------------------------------------------------
-   1. 初始化資料來源
-   我們優先從 localStorage 載入 (假資料)，
-   但也支援之後 firebase 模式：datasource.js 會切到 firebase.js
+   1. 初始化資料
 -------------------------------------------------------------------*/
-
-// 我們仍然用 localStorage 來做本地暫存，因為這頁很多是頁內草稿邏輯。
-// 但可以想像未來 firebase 模式要把這些 save() 換成 ds API。
 
 function rid(){ return crypto?.randomUUID?.() ?? 'id-' + Math.random().toString(36).slice(2,10) }
 function today(){ const d=new Date(); return d.toISOString().slice(0,10) }
 
 /* 門市 */
 const stores = reactive(loadStores())
-
 /* 食材清單（可下單品項） */
 const ingredients = reactive(loadIngredients())
-
-/* 供應來源（可能是「中央廚房」、「供應商」） */
+/* 供應來源（例如「中央廚房」、「供應商」） */
 const vendors = reactive(loadVendors())
-
 /* 訂單列表（草稿、pending、approved、sent…） */
 const orders = reactive(loadOrders())
 
@@ -786,7 +776,7 @@ function selectAllAI(on){
   aiRows.forEach(r => { r.checked = !!on })
 }
 
-/* AI 用的小幫手（隨機/估算模型） */
+/* AI 用的小幫手（簡易估算模型） */
 function avgLastNDays(ingId, n){
   const arr = salesHistory(ingId, n)
   return arr.length
@@ -837,6 +827,7 @@ function buildAIContext(d){
   const weather = fakeWeatherOf(d)
   const holiday = holidayOf(d)
   const weekdayName = '日一二三四五六'[new Date(d).getDay()]
+
   const reasons = [
     `星期${weekdayName}`,
     weather==='sunny' ? '晴朗' :
@@ -852,7 +843,6 @@ function fakeWeatherOf(d){
   const s = hash('weather-'+d)%4
   return ['sunny','rainy','hot','cold'][s]
 }
-
 function holidayOf(d){
   const x = new Date(d).getDate()
   return (x===1 || x===15) ? 'festival' : 'none'
@@ -1032,10 +1022,7 @@ const hotItems = computed(()=>{
     .slice(0,6)
 })
 
-/* 異常偵測：很簡單的規則
-   - 當天同一門市+同一來源下了 >=3 單
-   - 當天某張單的總數量 > 門檻 (例如 50)
-*/
+/* 異常偵測（簡單規則） */
 const suspiciousOrders = computed(()=>{
   const out = []
   const byKeyCount = new Map() // key = date|storeId|vendorId
@@ -1129,27 +1116,16 @@ function importJSON(e){
 }
 
 /* ------------------------------------------------------------------
-   9. 假資料存取：localStorage
-   （Firebase 模式之後可以改成呼叫後端/API）
+   9. 假資料存取：localStorage   （Firebase 模式可改為呼叫後端）
 -------------------------------------------------------------------*/
 
 function loadStores(){
-  // 優先從 datasource.read() 抓資料（未來 firebase 也可用）
   const snap = read()
   if (Array.isArray(snap.stores) && snap.stores.length){
-    // clone 成 reactive 陣列
-    return snap.stores.map(s => ({
-      id:s.id,
-      name:s.name,
-    }))
+    return snap.stores.map(s => ({ id:s.id, name:s.name }))
   }
-
-  // fallback localStorage
   const raw = localStorage.getItem('boss-stores')
-  if (raw){
-    try { return JSON.parse(raw) } catch {}
-  }
-  // 預設三店：含中央廚房 / 分店
+  if (raw){ try { return JSON.parse(raw) } catch {} }
   const s = [
     { id: rid(), name:'湖南雞 總店' },
     { id: rid(), name:'湖南雞 中央廚房' },
@@ -1162,10 +1138,8 @@ function loadStores(){
 function loadIngredients(){
   const snap = read()
   if (Array.isArray(snap.inventory) && snap.inventory.length){
-    // 將 seedData.inventory 轉成食材資料（只拿必要欄位）
     const arr = []
     snap.inventory.forEach(row=>{
-      // 去重 (同一 SKU 在不同 store 可能重複)
       if (!arr.some(x=>x.sku===row.sku)){
         arr.push({
           id: row.sku,
@@ -1179,8 +1153,6 @@ function loadIngredients(){
     })
     return arr
   }
-
-  // fallback localStorage
   const raw = localStorage.getItem('boss-ingredients')
   if (raw){
     try{
@@ -1189,44 +1161,23 @@ function loadIngredients(){
       if (Array.isArray(obj)) return obj
     }catch{}
   }
-
-  // 預設食材
   const ing = [
     { id: rid(), name:'湖南雞腿套餐', unit:'份', stock:12, safeStock:5, tags:[] },
     { id: rid(), name:'微辣豆干',     unit:'份', stock:20, safeStock:8, tags:[] },
     { id: rid(), name:'高麗菜',       unit:'顆', stock:6,  safeStock:4, tags:['蔬菜'] },
     { id: rid(), name:'雞蛋',         unit:'顆', stock:40, safeStock:10, tags:[] },
   ]
-
   localStorage.setItem('boss-ingredients', JSON.stringify({ ingredients: ing, tags: [] }))
   return ing
 }
 
 function loadVendors(){
   const raw = localStorage.getItem('boss-vendors')
-  if (raw){
-    try { return JSON.parse(raw) } catch {}
-  }
-
-  // 預設來源：中央廚房、外部供應商
+  if (raw){ try { return JSON.parse(raw) } catch {} }
   const v = [
-    {
-      id: rid(),
-      name:'中央廚房',
-      productIds: ingredients.map(i=>i.id).slice(0,3),
-    },
-    {
-      id: rid(),
-      name:'蛋肉供應商A',
-      productIds: ingredients.map(i=>i.id).slice(2),
-    },
-    {
-      id: rid(),
-      name:'青菜行B',
-      productIds: ingredients
-        .filter(i=>i.name.includes('菜') || i.name.includes('豆'))
-        .map(i=>i.id),
-    },
+    { id: rid(), name:'中央廚房',  productIds: ingredients.map(i=>i.id).slice(0,3) },
+    { id: rid(), name:'蛋肉供應商A', productIds: ingredients.map(i=>i.id).slice(2) },
+    { id: rid(), name:'青菜行B',    productIds: ingredients.filter(i=>i.name.includes('菜') || i.name.includes('豆')).map(i=>i.id) },
   ]
   localStorage.setItem('boss-vendors', JSON.stringify(v))
   return v
@@ -1234,10 +1185,7 @@ function loadVendors(){
 
 function loadOrders(){
   const raw = localStorage.getItem('boss-orders')
-  if (raw){
-    try { return JSON.parse(raw) } catch {}
-  }
-  // 預設空（第一次進來沒有送過單）
+  if (raw){ try { return JSON.parse(raw) } catch {} }
   return []
 }
 
@@ -1257,7 +1205,6 @@ function dateOffset(d, off){
   x.setDate(x.getDate() + off)
   return x.toISOString().slice(0,10)
 }
-
 function hash(s){
   let h=0
   for(let i=0;i<s.length;i++){
@@ -1276,10 +1223,11 @@ function toast(m){
 </script>
 
 <style scoped>
-/* 整體頁面容器 */
+/* 整體頁面容器（吃主題變數） */
 .inv-page{
   padding:16px;
-  background:#f6f8fc;
+  background: var(--bg);
+  color: var(--text);
   min-height:100%;
   height:auto;
   overflow:visible;
@@ -1291,513 +1239,225 @@ function toast(m){
   gap:8px;
   margin-bottom:8px;
 }
-.title{
-  font-size:20px;
-  font-weight:800;
-}
-.today-hint{
-  line-height:1.4;
-}
-.muted{ color:#64748b; }
+.title{ font-size:20px; font-weight:800; }
+.today-hint{ line-height:1.4; }
+.muted{ color: var(--muted); }
 .small{ font-size:12px; }
 .tiny{ font-size:11px; }
 .spacer{ flex:1; }
 
 /* 頂部分頁按鈕 */
 .inv-tabs{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  margin-bottom:12px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:12px;
 }
 .tab{
-  border:1px solid #e6eaf2;
-  background:#fff;
-  border-radius:10px;
-  padding:8px 12px;
-  cursor:pointer;
-  font-size:14px;
-  line-height:1.2;
+  border:1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius:10px; padding:8px 12px; cursor:pointer; font-size:14px; line-height:1.2;
 }
 .tab.active{
-  background:#e6f4ff;
-  border-color:#cfe9ff;
+  background: var(--primary-weak);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* 主區塊左右兩欄 */
 .inv-grid{
-  display:grid;
-  grid-template-columns:320px 1fr;
-  gap:12px;
-  min-width:0;
+  display:grid; grid-template-columns:320px 1fr; gap:12px; min-width:0;
 }
 .inv-side{
-  background:#fff;
-  border:1px solid #e6eaf2;
-  border-radius:16px;
-  overflow:hidden;
-  display:flex;
-  flex-direction:column;
+  background: var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:16px; overflow:hidden; display:flex; flex-direction:column;
 }
 
 /* 側欄：搜尋 / chips / 新增草稿 */
 .side-tools{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  padding:12px;
-  border-bottom:1px solid #f0f3f8;
+  display:flex; flex-direction:column; gap:10px; padding:12px; border-bottom:1px solid var(--border);
 }
 .search{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  border:1px solid #e6eaf2;
-  border-radius:12px;
-  padding:0 10px;
-  min-height:38px;
-  background:#fbfcff;
+  display:flex; align-items:center; gap:6px;
+  border:1px solid var(--border); border-radius:12px; padding:0 10px; min-height:38px; background: var(--card-bg);
   width:100%;
 }
 .input{
-  border:none;
-  outline:none;
-  background:transparent;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
   font-size:14px;
 }
-.row{
-  display:flex;
-  align-items:center;
-}
-.row.gap{
-  gap:8px;
-  flex-wrap:wrap;
-}
-.chips{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-}
+.input.bare{ border:none; background:transparent; }
+.row{ display:flex; align-items:center; }
+.row.gap{ gap:8px; flex-wrap:wrap; }
+.chips{ display:flex; gap:8px; flex-wrap:wrap; }
 .chip{
-  border:1px solid #e6eaf2;
-  border-radius:999px;
-  background:#fff;
-  padding:6px 10px;
-  cursor:pointer;
-  font-size:13px;
-  line-height:1.2;
+  border:1px solid var(--border); border-radius:999px; background: var(--card-bg); color: var(--text);
+  padding:6px 10px; cursor:pointer; font-size:13px; line-height:1.2;
 }
 .chip.on{
-  background:#eef2ff;
-  border-color:#c7d2fe;
+  background: var(--primary-weak);
+  border-color: var(--primary);
+  color: var(--primary);
 }
-.side-actions .btn.primary{
-  width:100%;
-}
+.side-actions .btn.primary{ width:100%; }
 
 /* 側欄列表：草稿 / 待審核訂單 */
 .side-list{
-  flex:1;
-  max-height:calc(100vh - 260px);
-  overflow:auto;
-  padding:10px 12px 16px;
+  flex:1; max-height:calc(100vh - 260px); overflow:auto; padding:10px 12px 16px;
 }
 .side-item{
-  display:flex;
-  align-items:flex-start;
-  gap:10px;
-  border:1px solid #e6eaf2;
-  border-radius:10px;
-  padding:10px;
-  margin-bottom:8px;
-  cursor:pointer;
-  background:#fff;
-  position:relative;
+  display:flex; align-items:flex-start; gap:10px;
+  border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px; cursor:pointer;
+  background: var(--card-bg); color: var(--text); position:relative;
 }
-.side-item.active{
-  outline:2px solid #9ec5ff;
-}
-.left-col{
-  display:flex;
-  flex-direction:column;
-  align-items:flex-start;
-  min-width:60px;
-}
-.top-row{
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-}
-.action-col{
-  margin-left:auto;
-  align-self:flex-start;
-}
+.side-item.active{ outline:2px solid var(--primary); }
+.left-col{ display:flex; flex-direction:column; align-items:flex-start; min-width:60px; }
+.top-row{ display:flex; gap:6px; flex-wrap:wrap; }
+.action-col{ margin-left:auto; align-self:flex-start; }
 .mini-ghost{
-  border:1px solid #cbd5e1;
-  background:#fff;
-  border-radius:8px;
-  font-size:12px;
-  line-height:1.2;
-  padding:4px 8px;
-  cursor:pointer;
+  border:1px solid var(--border); background: var(--card-bg); color: var(--text);
+  border-radius:8px; font-size:12px; line-height:1.2; padding:4px 8px; cursor:pointer;
 }
 
 /* 卡片外觀 */
 .card{
-  background:#fff;
-  border:1px solid #e6eaf2;
-  border-radius:16px;
-  padding:12px;
-  min-width:0;
+  background: var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:16px; padding:12px; min-width:0;
 }
 .card-lite{
-  border:1px dashed #e6eaf2;
-  border-radius:12px;
-  padding:12px;
-  margin-bottom:12px;
-  background:#fcfdff;
+  border:1px dashed var(--border);
+  border-radius:12px; padding:12px; margin-bottom:12px; background: var(--card-bg);
 }
 .section-head{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:4px 8px;
+  display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:4px 8px;
 }
-.h3{
-  margin:0 0 4px;
-  font-size:15px;
-  font-weight:600;
-}
-.hint{
-  line-height:1.4;
-}
-.warn-text{
-  color:#b91c1c;
-}
+.h3{ margin:0 0 4px; font-size:15px; font-weight:600; }
+.hint{ line-height:1.4; }
+.warn-text{ color:#b91c1c; } /* 警示文字維持語意色 */
 
 /* KPI 卡片 */
-.kpi-grid{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:12px;
-  margin-bottom:12px;
-}
+.kpi-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:12px; }
 .kpi{
-  background:#fff;
-  border:1px solid #e6eaf2;
-  border-radius:14px;
-  padding:16px;
-  min-width:0;
+  background: var(--card-bg); border:1px solid var(--border); border-radius:14px; padding:16px; min-width:0;
 }
-.kpi-title{
-  color:#64748b;
-  font-size:13px;
-  margin-bottom:6px;
-  line-height:1.3;
-}
-.kpi-value{
-  font-size:28px;
-  font-weight:800;
-  line-height:1.15;
-}
+.kpi-title{ color: var(--muted); font-size:13px; margin-bottom:6px; line-height:1.3; }
+.kpi-value{ font-size:28px; font-weight:800; line-height:1.15; }
 .kpi-value.ok{ color:#15803d; }
 .kpi-value.warn{ color:#b45309; }
 
 /* 2欄小總表 */
-.grid-2{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-}
+.grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 
 /* 「可疑訂單」區塊 */
-.alert-block{
-  border-color:#fde68a;
-  background:#fffef6;
-}
-.alert-block .card-lite{
-  border-color:#fde68a;
-}
+.alert-block{ border-color:#fde68a; background: var(--card-bg); }
 
 /* compose head */
-.compose-head{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  margin-bottom:8px;
-}
-.seg{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px;
-}
+.compose-head{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
+.seg{ display:flex; flex-wrap:wrap; gap:6px; }
 .segbtn{
-  border:1px solid #e6eaf2;
-  background:#fff;
-  border-radius:10px;
-  padding:6px 10px;
-  cursor:pointer;
-  font-size:13px;
-  line-height:1.2;
+  border:1px solid var(--border); background: var(--card-bg); color: var(--text);
+  border-radius:10px; padding:6px 10px; cursor:pointer; font-size:13px; line-height:1.2;
 }
-.segbtn.active{
-  background:#e6f4ff;
-  border-color:#cfe9ff;
-}
+.segbtn.active{ background: var(--primary-weak); border-color: var(--primary); color: var(--primary); }
 
 /* AI / 手動 共用工具列 */
-.ai-toolbar{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  margin-bottom:8px;
-}
-.flex-title{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-}
+.ai-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
+.flex-title{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .mt-8{ margin-top:8px; }
 .mt-12{ margin-top:12px; }
 .w-full{ width:100%; }
 .w220{ width:220px; max-width:100%; }
 .w90{ width:90px; max-width:100%; }
 
-/* 表格樣式 */
+/* 表格樣式（吃表頭/hover變數） */
 .table-wrap{
-  overflow:auto;
-  border:1px solid #eef2f6;
-  border-radius:12px;
+  overflow:auto; border:1px solid var(--border); border-radius:12px;
 }
-.tbl{
-  width:100%;
-  min-width:780px;
-  border-collapse:collapse;
+.tbl{ width:100%; min-width:780px; border-collapse:collapse; }
+.tbl th, .tbl td{
+  padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; font-size:13px; line-height:1.4;
 }
-.tbl th,
-.tbl td{
-  padding:10px 12px;
-  border-bottom:1px solid #f0f3f8;
-  text-align:left;
-  vertical-align:top;
-  font-size:13px;
-  line-height:1.4;
-}
-.tbl thead th{
-  position:sticky;
-  top:0;
-  background:#fafcff;
-  z-index:1;
-}
-.tbl .num{
-  text-align:right;
-}
-.item-cell .name{
-  font-weight:600;
-}
+.tbl thead th{ position:sticky; top:0; background: var(--thead-bg); color: var(--thead-text); z-index:1; }
+.tbl tbody tr:hover td{ background: var(--hover-bg); }
+.tbl .num{ text-align:right; }
+.item-cell .name{ font-weight:600; }
 
-/* 狀態徽章 */
+/* 狀態徽章（語意色保留） */
 .badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-width:54px;
-  height:24px;
-  border-radius:999px;
-  font-size:12px;
-  line-height:1.2;
-  padding:0 8px;
-  border:1px solid #e2e8f0;
-  background:#f8fafc;
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:54px; height:24px; border-radius:999px; font-size:12px; line-height:1.2; padding:0 8px;
+  border:1px solid var(--border); background: var(--hover-bg); color: var(--text);
 }
-.badge.pending{
-  background:#fff7ed;
-  border-color:#fed7aa;
-  color:#9a3412;
-}
-.badge.draft{
-  background:#eef2ff;
-  border-color:#c7d2fe;
-  color:#3730a3;
-}
-.badge.approved{
-  background:#ecfeff;
-  border-color:#bae6fd;
-  color:#075985;
-}
-.badge.rejected{
-  background:#fef2f2;
-  border-color:#fecaca;
-  color:#7f1d1d;
-}
-.badge.sent{
-  background:#f0fdf4;
-  border-color:#86efac;
-  color:#166534;
-}
+.badge.pending{  background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
+.badge.draft{    background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
+.badge.approved{ background:#ecfeff; border-color:#bae6fd; color:#075985; }
+.badge.rejected{ background:#fef2f2; border-color:#fecaca; color:#7f1d1d; }
+.badge.sent{     background:#f0fdf4; border-color:#86efac; color:#166534; }
 
 /* 小標籤 */
-.tags{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px;
-}
+.tags{ display:flex; flex-wrap:wrap; gap:6px; }
 .pill{
-  display:inline-flex;
-  gap:4px;
-  align-items:center;
-  background:#eef2ff;
-  border:1px solid #c7d2fe;
-  border-radius:999px;
-  padding:2px 8px;
-  font-size:12px;
-  line-height:1.2;
+  display:inline-flex; gap:4px; align-items:center;
+  background:#eef2ff; border:1px solid #c7d2fe; border-radius:999px; padding:2px 8px; font-size:12px; line-height:1.2;
 }
 
 /* 來源管理卡 */
-.vendor-list{
-  display:grid;
-  gap:12px;
-}
+.vendor-list{ display:grid; gap:12px; }
 .vendor-card{
-  border:1px solid #e6eaf2;
-  border-radius:12px;
-  background:#fff;
-  padding:12px;
+  border:1px solid var(--border); border-radius:12px; background: var(--card-bg); padding:12px;
 }
-.vendor-head{
-  font-size:14px;
-  font-weight:600;
-  flex-wrap:wrap;
-}
+.vendor-head{ font-size:14px; font-weight:600; flex-wrap:wrap; }
 .link{
-  background:none;
-  border:none;
-  color:#2563eb;
-  font-size:12px;
-  line-height:1.2;
-  cursor:pointer;
-  padding:0;
+  background:none; border:none; color: var(--primary); font-size:12px; line-height:1.2; cursor:pointer; padding:0;
 }
-.link.danger{
-  color:#b91c1c;
-}
+.link.danger{ color:#b91c1c; }
 
-/* Checkbox UI */
+/* Checkbox UI（吃變數） */
 .ck input{ display:none; }
 .ck span{
-  width:18px;
-  height:18px;
-  border:1px solid #cbd5e1;
-  border-radius:4px;
-  display:inline-block;
-  background:#fff;
-  position:relative;
+  width:18px; height:18px; border:1px solid var(--border); border-radius:4px; display:inline-block; background: var(--card-bg); position:relative;
 }
-.ck input:checked + span::after{
-  content:'';
-  position:absolute;
-  inset:2px;
-  background:#2563eb;
-  border-radius:2px;
-}
+.ck input:checked + span::after{ content:''; position:absolute; inset:2px; background: var(--primary); border-radius:2px; }
 
-/* 共用按鈕樣式 */
+/* 共用按鈕樣式（吃變數） */
 .btn{
-  border:1px solid #cfe0ff;
-  background:#fff;
-  color:#2563eb;
-  border-radius:10px;
-  padding:8px 12px;
-  cursor:pointer;
-  font-size:13px;
-  line-height:1.2;
+  border:1px solid var(--primary);
+  background: var(--card-bg);
+  color: var(--primary);
+  border-radius:10px; padding:8px 12px; cursor:pointer; font-size:13px; line-height:1.2;
 }
-.btn.primary{
-  background:#2563eb;
-  border-color:#2563eb;
-  color:#fff;
-}
-.btn.ghost{
-  border-color:#e6eaf2;
-  color:#334155;
-  background:#fff;
-}
-.btn.small{
-  padding:6px 10px;
-  font-size:12px;
-  line-height:1.2;
-}
-.file-btn{
-  position:relative;
-  overflow:hidden;
-}
-.file-btn input{
-  position:absolute;
-  inset:0;
-  opacity:0;
-  cursor:pointer;
-}
+.btn.primary{ background: var(--primary); border-color: var(--primary); color:#fff; }
+.btn.ghost{ border-color: var(--border); color: var(--text); background: var(--card-bg); }
+.btn.small{ padding:6px 10px; font-size:12px; line-height:1.2; }
+.file-btn{ position:relative; overflow:hidden; }
+.file-btn input{ position:absolute; inset:0; opacity:0; cursor:pointer; }
 
 /* 頁面底部工具列 */
 .bottom{
-  max-width:1200px;
-  margin:12px auto 0;
-  background:#fff;
-  border:1px solid #e6eaf2;
-  border-radius:16px;
-  padding:12px;
+  max-width:1200px; margin:12px auto 0;
+  background: var(--card-bg); border:1px solid var(--border); border-radius:16px; padding:12px;
 }
-.row.wrap{
-  flex-wrap:wrap;
-  row-gap:8px;
-}
+.row.wrap{ flex-wrap:wrap; row-gap:8px; }
 
 /* Toast */
 .toast{
-  position:fixed;
-  left:50%;
-  bottom:24px;
-  transform:translateX(-50%);
-  background:#111827;
-  color:#fff;
-  font-size:13px;
-  line-height:1.3;
-  padding:10px 14px;
-  border-radius:8px;
-  box-shadow:0 10px 30px rgba(0,0,0,.4);
-  z-index:9999;
+  position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
+  background: var(--text); color:#fff; font-size:13px; line-height:1.3;
+  padding:10px 14px; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.4); z-index:9999;
 }
-.fade-enter-active,
-.fade-leave-active{
-  transition:opacity .18s;
-}
-.fade-enter-from,
-.fade-leave-to{
-  opacity:0;
-}
+.fade-enter-active, .fade-leave-active{ transition:opacity .18s; }
+.fade-enter-from, .fade-leave-to{ opacity:0; }
 
 /* RWD */
 @media (max-width:1024px){
-  .inv-grid{
-    grid-template-columns:1fr;
-  }
-  .side-list{
-    max-height:none;
-  }
-  .tbl{
-    min-width:640px;
-  }
-  .kpi-grid{
-    grid-template-columns:repeat(2,1fr);
-  }
-  .grid-2{
-    grid-template-columns:1fr;
-  }
+  .inv-grid{ grid-template-columns:1fr; }
+  .side-list{ max-height:none; }
+  .tbl{ min-width:640px; }
+  .kpi-grid{ grid-template-columns:repeat(2,1fr); }
+  .grid-2{ grid-template-columns:1fr; }
 }
 </style>

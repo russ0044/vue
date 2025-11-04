@@ -150,18 +150,12 @@ import { setMode } from '@/store/datasource'
 /* -------------------------------------------------
    狀態：主題 / 資料來源 / 偏好
 ------------------------------------------------- */
-
-// 主題：從 localStorage 讀取，無值則視為 auto
 const storedTheme = localStorage.getItem('theme') || 'auto'
 const theme = ref(storedTheme)
 
-// 資料來源模式
 const mode = ref(localStorage.getItem('ds-mode') || 'mock')
-
-// Firebase 設定字串（JSON）
 const cfg = ref(localStorage.getItem('firebase-config') || '')
 
-// 顯示偏好（語言、密度、通知）
 const lang = ref(localStorage.getItem('pref-lang') || 'zh-TW')
 const density = ref(localStorage.getItem('pref-density') || 'normal')
 const notifyStock = ref(localStorage.getItem('pref-notify-stock') === '1')
@@ -171,20 +165,23 @@ const router = useRouter()
 const { state: roleState } = useRoleStore()
 
 /* -------------------------------------------------
-   主題套用
+   主題套用（改為全域統一版本）
 ------------------------------------------------- */
 function applyTheme() {
-  if (theme.value === 'auto') {
-    // 自動模式：根據系統深色偏好
-    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-    document.documentElement.classList.toggle('theme-dark', prefersDark)
-    localStorage.removeItem('theme')
+  // 使用 main.js 提供的全域方法
+  if (window.setTheme) {
+    window.setTheme(theme.value)
   } else {
-    const isDark = theme.value === 'dark'
-    document.documentElement.classList.toggle('theme-dark', isDark)
+    // 保險機制：若全域函式不存在，則自行切換
+    const shouldDark =
+      theme.value === 'dark' ||
+      (theme.value === 'auto' &&
+        window.matchMedia?.('(prefers-color-scheme: dark)').matches)
+    document.documentElement.classList.toggle('dark', !!shouldDark)
     localStorage.setItem('theme', theme.value)
   }
-  alert('主題已套用')
+  // 可改為更好的提示方式
+  alert(`已套用主題模式：${theme.value === 'auto' ? '自動' : theme.value}`)
 }
 
 /* -------------------------------------------------
@@ -195,7 +192,6 @@ function savePrefs() {
   localStorage.setItem('pref-density', density.value)
   localStorage.setItem('pref-notify-stock', notifyStock.value ? '1' : '0')
   localStorage.setItem('pref-notify-delivery', notifyDelivery.value ? '1' : '0')
-
   alert('顯示偏好已儲存')
 }
 
@@ -206,12 +202,10 @@ async function saveFirebase() {
   try {
     const obj = JSON.parse(cfg.value)
     localStorage.setItem('firebase-config', JSON.stringify(obj))
-
     await setMode('firebase')
     localStorage.setItem('ds-mode', 'firebase')
     mode.value = 'firebase'
-
-    alert('已切換為 Firebase（請確認 Firestore 集合：stores、inventory、thresholds、settings）')
+    alert('已切換為 Firebase 模式，請重新整理頁面以生效')
   } catch {
     alert('JSON 解析失敗，請檢查格式')
   }
@@ -221,33 +215,21 @@ async function switchToMock() {
   await setMode('mock')
   localStorage.setItem('ds-mode', 'mock')
   mode.value = 'mock'
-  alert('已切換為假資料（seedData）')
+  alert('已切換為假資料模式（seedData）')
 }
 
 /* -------------------------------------------------
-   返回主頁（修正：員工也能正確返回）
+   返回主頁（依角色導向）
 ------------------------------------------------- */
 function goHome() {
-  // 從角色判斷應該回哪個首頁
   const role = roleState.role
-
-  if (role === 'Boss') {
-    router.replace({ name: 'boss-inventory' })
-    return
-  }
-  if (role === 'Employee') {
-    router.replace({ name: 'emp-inventory' })
-    return
-  }
-  if (role === 'Kitchen') {
-    router.replace({ name: 'kitchen-orders' })
-    return
-  }
-
-  // 如果連角色都沒有（例如尚未登入 / 已清除）
+  if (role === 'Boss') return router.replace({ name: 'boss-inventory' })
+  if (role === 'Employee') return router.replace({ name: 'emp-inventory' })
+  if (role === 'Kitchen') return router.replace({ name: 'kitchen-orders' })
   router.replace({ name: 'login' })
 }
 </script>
+
 
 <style scoped>
 /* 版面骨架 */

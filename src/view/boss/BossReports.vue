@@ -16,6 +16,7 @@
           <button :class="['segbtn', scope==='all' && 'active']" @click="scope='all'">全部店面</button>
           <button :class="['segbtn', scope==='single' && 'active']" @click="scope='single'">單一店面</button>
         </div>
+
         <select v-if="scope==='single'" v-model="storeId" class="input w220">
           <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
@@ -42,7 +43,7 @@
       </p>
     </div>
 
-    <!-- KPI -->
+    <!-- KPI 區 -->
     <div class="rep-kpi">
       <div class="k card"><div class="cap">訂單數</div><div class="val">{{ kpi.orderCount }}</div></div>
       <div class="k card"><div class="cap">品項數</div><div class="val">{{ kpi.itemKinds }}</div></div>
@@ -81,7 +82,12 @@
             <tr v-if="!tableRows.length"><td colspan="4" class="center muted">沒有資料</td></tr>
           </tbody>
           <tfoot v-if="tableRows.length">
-            <tr><th>合計</th><th class="tr">{{ kpi.qtyTotal }}</th><th class="tr">$ {{ formatMoney(kpi.revenue) }}</th><th class="tr">100%</th></tr>
+            <tr>
+              <th>合計</th>
+              <th class="tr">{{ kpi.qtyTotal }}</th>
+              <th class="tr">$ {{ formatMoney(kpi.revenue) }}</th>
+              <th class="tr">100%</th>
+            </tr>
           </tfoot>
         </table>
       </div>
@@ -103,23 +109,37 @@ const PieChart = defineComponent({
     const svgRef = ref(null)
     const colors = ['#60a5fa','#f472b6','#34d399','#fbbf24','#c084fc','#f87171','#2dd4bf','#a3e635','#fb7185','#93c5fd']
     const polarToXY = (cx,cy,r,angle)=>[ cx + r*Math.cos(angle), cy + r*Math.sin(angle) ]
+
     const build = () => {
       const svg = svgRef.value; if (!svg) return; svg.innerHTML = ''
       const cx=160, cy=160, r=110, hole=60; let start = -Math.PI/2
       const g = document.createElementNS('http://www.w3.org/2000/svg','g'); svg.appendChild(g)
+
       ;(props.data||[]).forEach((d,i)=>{
         const angle=(d.ratio||0)*Math.PI*2, end=start+angle
-        const [x1,y1]=polarToXY(cx,cy,r,start), [x2,y2]=polarToXY(cx,cy,r,end), large=angle>Math.PI?1:0
-        const [ix1,iy1]=polarToXY(cx,cy,hole,end), [ix2,iy2]=polarToXY(cx,cy,hole,start)
+        const [x1,y1]=polarToXY(cx,cy,r,start)
+        const [x2,y2]=polarToXY(cx,cy,r,end)
+        const large=angle>Math.PI?1:0
+        const [ix1,iy1]=polarToXY(cx,cy,hole,end)
+        const [ix2,iy2]=polarToXY(cx,cy,hole,start)
+
         const path=document.createElementNS('http://www.w3.org/2000/svg','path')
         path.setAttribute('d',`M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${hole} ${hole} 0 ${large} 0 ${ix2} ${iy2} Z`)
-        path.setAttribute('fill', colors[i%colors.length]); path.setAttribute('stroke','#fff'); path.setAttribute('stroke-width','1'); g.appendChild(path)
+        path.setAttribute('fill', colors[i%colors.length])
+        path.setAttribute('stroke','#fff')
+        path.setAttribute('stroke-width','1')
+        g.appendChild(path)
         start=end
       })
-      const t = document.createElementNS('http://www.w3.org/2000/svg','text')
-      ;[['x',cx],['y',cy],['text-anchor','middle'],['dominant-baseline','middle'],['fill','#334155'],['font-size','14']]
-        .forEach(([k,v])=>t.setAttribute(k,String(v))); t.textContent=props.title||''; svg.appendChild(t)
 
+      // 中央標題
+      const t = document.createElementNS('http://www.w3.org/2000/svg','text')
+      ;[['x',cx],['y',cy],['text-anchor','middle'],['dominant-baseline','middle'],['fill','var(--text)'],['font-size','14']]
+        .forEach(([k,v])=>t.setAttribute(k,String(v)))
+      t.textContent=props.title||''
+      svg.appendChild(t)
+
+      // 圖例
       const legendX=320, legendY=40, step=26
       ;(props.data||[]).forEach((d,i)=>{
         const y=legendY+i*step
@@ -127,38 +147,44 @@ const PieChart = defineComponent({
         rect.setAttribute('x',legendX); rect.setAttribute('y',y-10); rect.setAttribute('width',14); rect.setAttribute('height',14); rect.setAttribute('rx',3)
         rect.setAttribute('fill', colors[i%colors.length]); svg.appendChild(rect)
         const txt=document.createElementNS('http://www.w3.org/2000/svg','text')
-        txt.setAttribute('x',legendX+22); txt.setAttribute('y',y+2); txt.setAttribute('fill','#475569'); txt.setAttribute('font-size','13')
+        txt.setAttribute('x',legendX+22); txt.setAttribute('y',y+2); txt.setAttribute('fill','var(--text)'); txt.setAttribute('font-size','13')
         txt.textContent=`${d.name}：${((d.ratio||0)*100).toFixed(1)}%`; svg.appendChild(txt)
       })
     }
+
     watch(()=>[props.data, props.title], ()=>nextTick(build), { deep:true })
     onMounted(()=> nextTick(build))
 
+    // 匯出為 PNG
     const downloadPNG = async (filename='pie.png')=>{
       const svg=svgRef.value; if(!svg) return
       const xml=new XMLSerializer().serializeToString(svg)
-      const blob=new Blob([xml],{type:'image/svg+xml;charset=utf-8'}), url=URL.createObjectURL(blob)
-      const img=new Image(), w=560, h=320, cvs=document.createElement('canvas'); cvs.width=w; cvs.height=h
+      const blob=new Blob([xml],{type:'image/svg+xml;charset=utf-8'})
+      const url=URL.createObjectURL(blob)
+      const img=new Image(), w=560, h=320
+      const cvs=document.createElement('canvas'); cvs.width=w; cvs.height=h
       const ctx=cvs.getContext('2d')
       await new Promise(res=>{ img.onload=()=>{ ctx.drawImage(img,0,0,w,h); URL.revokeObjectURL(url); res() }; img.src=url })
-      const data=cvs.toDataURL('image/png'); const a=document.createElement('a'); a.href=data; a.download=filename; a.click()
+      const data=cvs.toDataURL('image/png')
+      const a=document.createElement('a'); a.href=data; a.download=filename; a.click()
     }
+
     expose({ downloadPNG })
     return () => h('svg', { ref: svgRef, width: 560, height: 320, viewBox: '0 0 560 320' })
   }
 })
 
-/* ================= 資料來源（統一 from datasource） ================= */
+/* ================= 資料來源：統一走 datasource ================= */
 const view = reactive(read())
 let unSub = null
 onMounted(() => { unSub = subscribe?.(snap => Object.assign(view, snap)) })
 watch(() => read?.(), v => Object.assign(view, v||{}), { deep:false })
 
-const stores = computed(() => Array.isArray(view?.stores) ? view.stores : [])
-const hasOrders = computed(() => Array.isArray(view?.orders) && view.orders.length > 0)
-const isMock = computed(() => (localStorage.getItem('ds-mode') || 'mock') === 'mock')
+const stores   = computed(() => Array.isArray(view?.stores) ? view.stores : [])
+const hasOrders= computed(() => Array.isArray(view?.orders) && view.orders.length > 0)
+const isMock   = computed(() => (localStorage.getItem('ds-mode') || 'mock') === 'mock')
 
-/* ================= 分類定義（你可改為從後端帶入） ================= */
+/* ================= 分類定義（可改成後端帶入） ================= */
 const CATES = [
   { key:'meat',   name:'肉品'  },
   { key:'veg',    name:'蔬菜'  },
@@ -179,7 +205,7 @@ function setRange(days){
 onMounted(()=>{ setRange(30); storeId.value = stores.value[0]?.id || '' })
 watch(stores, (nv)=>{ if(nv?.length && !nv.some(s=>s.id===storeId.value)) storeId.value = nv[0].id })
 
-/* ================= 訂單來源：優先用 datasource.orders；否則根據 inventory 生成 mock（可重現） ================= */
+/* ================= 訂單來源：datasource.orders 優先；否則依 inventory 生成 mock ================= */
 const orders = computed(() => {
   if (hasOrders.value) return view.orders
   return genOrdersFromInventory(view.inventory || [], stores.value, dateFrom.value, dateTo.value)
@@ -196,10 +222,8 @@ function genOrdersFromInventory(inventory, storeList, from, to){
   for(let ts=f.getTime(); ts<=t.getTime(); ts+=86400000){
     const ds = toISO(new Date(ts))
     for(const s of storeList){
-      // 為每個（店面+日期）創建穩定的隨機序列
       const rnd = rng(hash32(s.id+'|'+ds))
-      // 每天 3~6 筆
-      const n = 3 + Math.floor(rnd()*4)
+      const n = 3 + Math.floor(rnd()*4) // 每天 3~6 筆
       for(let i=0;i<n;i++){
         const pick = inventory[Math.floor(rnd()*inventory.length)]
         const cate = CATES[Math.floor(rnd()*CATES.length)]
@@ -235,7 +259,7 @@ const kpi = computed(()=>{
   return { orderCount,itemKinds,qtyTotal,revenue,avgPrice }
 })
 
-/* 圓餅圖 & 表格 */
+/* 圓餅圖 & 表格資料 */
 const pieMode = ref('revenue')
 const pieData = computed(()=>{
   const base = CATES.map(c=>({ key:c.key, name:c.name, value:0 }))
@@ -256,7 +280,8 @@ const tableRows = computed(()=>{
     .map(r=>({ key:r.key, name:r.name, qty:qtyByCate(r.key), revenue:revenueByCate(r.key), ratio:r.ratio }))
 })
 
-function reload(){ /* 使用 computed/subscribe，這裡保持即時；預留按鈕體驗 */ }
+/* 重新整理（保留按鈕體驗，實際由 computed/subscribe 即時反映） */
+function reload(){}
 
 /* 匯出 */
 function escapeCSV(v){ const s=String(v??''); return /[,"\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s }
@@ -274,71 +299,179 @@ function exportCSV(){
   ]
   const csv = rows.filter(r=>r.length).map(r => r.map(escapeCSV).join(',')).join('\n')
   const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='report.csv'; a.click(); URL.revokeObjectURL(url)
+  const url = URL.createObjectURL(blob)
+  const a=document.createElement('a'); a.href=url; a.download='report.csv'; a.click()
+  URL.revokeObjectURL(url)
 }
 
 const pieRef = ref(null)
 async function exportPNG(){ await pieRef.value?.downloadPNG?.(`report-pie-${pieMode.value}.png`) }
 
-/* UI */
+/* Toast */
 const toastMsg = ref(''); function toast(m){ toastMsg.value=m; setTimeout(()=>toastMsg.value='',1400) }
+
+/* 與全域主題對齊（若已在 main.js 處理可保留不影響） */
+onMounted(() => {
+  const theme = localStorage.getItem('theme') || 'auto'
+  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+  const shouldDark = theme === 'dark' || (theme === 'auto' && prefersDark)
+  document.documentElement.classList.toggle('dark', !!shouldDark)
+})
 </script>
 
 <style scoped>
-/* 版面骨架 */
-.rep-page{ padding:16px; background:#f6f8fc; min-height:100%; height:auto; overflow:visible; }
+/* ===== 版面骨架 ===== */
+.rep-page{
+  padding:16px;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100%;
+  height:auto;
+  overflow:visible;
+  transition:background .25s,color .25s;
+}
 .rep-header{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 .title{ font-size:20px; font-weight:800; }
 .spacer{ flex:1; }
 
-/* 控件 */
-.btn{ border:1px solid #cfe0ff; background:#fff; color:#2563eb; border-radius:10px; padding:8px 12px; cursor:pointer }
-.btn.primary{ background:#2563eb; border-color:#2563eb; color:#fff }
-.btn.ghost{ border-color:#e6eaf2; color:#334155; background:#fff }
-.btn.small{ padding:6px 10px }
-.card{ background:#fff; border:1px solid #e6eaf2; border-radius:16px; padding:12px; min-width:0; }
-.card-lite{ background:#fff; border:1px dashed #e6eaf2; border-radius:12px; padding:12px; }
-.row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
-.input{ border:1px solid #e6eaf2; border-radius:10px; padding:8px 10px; outline:none; background:#fff; }
-.input:focus{ border-color:#9ec5ff; box-shadow:0 0 0 3px rgba(99,162,255,.15) }
-.label{ min-width:56px; color:#475569 }
-.chips{ display:flex; gap:8px; flex-wrap:wrap }
-.chip{ border:1px solid #e6eaf2; border-radius:999px; background:#fff; padding:6px 10px; cursor:pointer }
-.seg{ display:flex; gap:6px }
-.segbtn{ border:1px solid #e6eaf2; background:#fff; border-radius:10px; padding:6px 10px; cursor:pointer }
-.segbtn.active{ background:#e6f4ff; border-color:#cfe9ff }
+/* ===== 控件 ===== */
+.btn{
+  border:1px solid var(--border);
+  background:var(--card-bg);
+  color:var(--text);
+  border-radius:10px;
+  padding:8px 12px;
+  cursor:pointer;
+  font-size:14px;
+  line-height:1.2;
+  transition:.15s;
+}
+.btn:hover{ border-color:var(--thead-text); }
+.btn.primary{ background:#2563eb; border-color:#2563eb; color:#fff; }
+.btn.ghost{ background:var(--card-bg); color:var(--text); }
+.btn.small{ padding:6px 10px; font-size:12px; }
+
+.card{
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:12px;
+  min-width:0;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.card-lite{
+  background:var(--card-bg);
+  border:1px dashed var(--border);
+  border-radius:12px;
+  padding:12px;
+}
+.row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.input{
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:8px 10px;
+  outline:none;
+  background:var(--card-bg);
+  color:var(--text);
+}
+.input:focus{ border-color:#9ec5ff; box-shadow:0 0 0 3px rgba(99,162,255,.15); }
+.label{ min-width:56px; color:var(--muted); }
+.chips{ display:flex; gap:8px; flex-wrap:wrap; }
+.chip{
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:var(--card-bg);
+  padding:6px 10px;
+  cursor:pointer;
+  font-size:13px;
+}
+.seg{ display:flex; gap:6px; }
+.segbtn{
+  border:1px solid var(--border);
+  background:var(--card-bg);
+  border-radius:10px;
+  padding:6px 10px;
+  cursor:pointer;
+  font-size:13px;
+}
+.segbtn.active{ background:var(--hover-bg); border-color:#cfe9ff; }
 .w200{ width:200px } .w220{ width:220px }
 .tip{ margin:8px 0 0; }
 
-/* KPI */
-.rep-kpi{ display:grid; grid-template-columns:repeat(5, minmax(120px,1fr)); gap:10px; margin:10px 0 12px }
-.k .cap{ color:#64748b; font-size:12px }
-.k .val{ font-weight:800; font-size:20px; margin-top:2px }
+/* ===== KPI ===== */
+.rep-kpi{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(120px,1fr));
+  gap:10px;
+  margin:10px 0 12px;
+}
+.k .cap{ color:var(--muted); font-size:12px; }
+.k .val{ font-weight:800; font-size:20px; margin-top:2px; }
 
-/* 主區塊 */
-.rep-toolbar{ margin-bottom:10px }
-.rep-grid{ display:grid; grid-template-columns:1.1fr 1fr; gap:12px }
-.panel-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px }
-.h3{ margin:0 0 4px; font-weight:800 }
-.table-wrap{ overflow:auto }
-.table{ width:100%; border-collapse:collapse; min-width:520px }
-.table th,.table td{ padding:10px; border-bottom:1px solid #eef2f6; text-align:left }
-.table th.tr,.table td.tr{ text-align:right }
+/* ===== 主區塊 ===== */
+.rep-toolbar{ margin-bottom:10px; }
+.rep-grid{ display:grid; grid-template-columns:1.1fr 1fr; gap:12px; }
+.panel-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.h3{ margin:0 0 4px; font-weight:800; }
+
+/* ===== 表格 ===== */
+.table-wrap{ overflow:auto; }
+.table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:520px;
+}
+.table th,.table td{
+  padding:10px;
+  border-bottom:1px solid var(--border);
+  text-align:left;
+  vertical-align:top;
+  font-size:14px;
+  line-height:1.4;
+}
+.table thead th{
+  position:sticky;
+  top:0;
+  background:var(--thead-bg);
+  color:var(--thead-text);
+  z-index:1;
+}
+.table tr:hover td{ background:var(--hover-bg); }
+.table th.tr,.table td.tr{ text-align:right; }
 .center{text-align:center}
-.muted{ color:#64748b }
+.muted{ color:var(--muted); }
 
-/* SVG */
-svg{ width:100%; height:auto; display:block; border-radius:12px; background:linear-gradient(180deg,#fff, #fbfdff) }
-.toast{ position:fixed; right:16px; bottom:16px; background:#111827; color:#fff; padding:10px 12px; border-radius:10px; opacity:.95; z-index:70; }
-.fade-enter-active,.fade-leave-active{ transition:.18s }
-.fade-enter-from,.fade-leave-to{ opacity:0; transform:translateY(6px) }
+/* ===== SVG（圓餅圖） ===== */
+svg{
+  width:100%;
+  height:auto;
+  display:block;
+  border-radius:12px;
+  background:linear-gradient(180deg,var(--card-bg), #fbfdff10);
+}
 
-/* RWD */
+/* ===== Toast / 動畫 ===== */
+.toast{
+  position:fixed;
+  right:16px;
+  bottom:16px;
+  background:#111827;
+  color:#fff;
+  padding:10px 12px;
+  border-radius:10px;
+  opacity:.95;
+  z-index:70;
+  font-size:13px;
+}
+.fade-enter-active,.fade-leave-active{ transition:.18s; }
+.fade-enter-from,.fade-leave-to{ opacity:0; transform:translateY(6px); }
+
+/* ===== RWD ===== */
 @media (max-width:1024px){
-  .rep-grid{ grid-template-columns:1fr }
-  .rep-kpi{ grid-template-columns:repeat(2,1fr) }
+  .rep-grid{ grid-template-columns:1fr; }
+  .rep-kpi{ grid-template-columns:repeat(2,1fr); }
 }
 @media (max-width:600px){
-  .rep-kpi{ grid-template-columns:1fr 1fr }
+  .rep-kpi{ grid-template-columns:1fr 1fr; }
 }
 </style>

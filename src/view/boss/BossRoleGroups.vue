@@ -1,4 +1,3 @@
-<!-- src/view/boss/bossRoleGroups.vue -->
 <template>
   <section
     class="page"
@@ -39,16 +38,16 @@
       <div class="seg" role="tablist">
         <button
           :class="['seg-btn', activeTab==='roles' && 'active']"
+          :aria-selected="activeTab==='roles'"
           role="tab"
-          aria-selected="activeTab==='roles'"
           @click="switchTab('roles')"
         >
           使用者權限群組
         </button>
         <button
           :class="['seg-btn', activeTab==='stores' && 'active']"
+          :aria-selected="activeTab==='stores'"
           role="tab"
-          aria-selected="activeTab==='stores'"
           @click="switchTab('stores')"
         >
           門市群組
@@ -87,7 +86,7 @@
             </div>
           </div>
         </div>
-        <p v-if="filteredRoleGroups.length===0" class="muted center">沒有符合的群組</p>
+        <p v-if="!filteredRoleGroups.length" class="muted center">沒有符合的群組</p>
       </div>
 
       <!-- 門市清單 -->
@@ -107,7 +106,7 @@
             </div>
           </div>
         </div>
-        <p v-if="filteredStores.length===0" class="muted center">沒有符合的門市</p>
+        <p v-if="!filteredStores.length" class="muted center">沒有符合的門市</p>
       </div>
     </aside>
 
@@ -257,22 +256,36 @@
 
 <script setup>
 /**
- * 改善重點：
- * 1) 修正缺失的 filteredPermByCategory（原始碼會報錯）；
- * 2) 強化資料一致性：刪除群組時會自動從所有門市移除並持久化；
- * 3) RWD 與可用性優化；增加資料來源狀態徽章（與「系統設置」一致）；
- * 4) 更嚴謹的存檔驗證（避免重名、空權限）；
- * 5) 防呆：stores/roles 異動時自動修正當前選擇，避免空引用；
- * 6) 拖曳排序穩定性提升（DOM→狀態回寫）；空陣列防護；
- * 7) 本檔不負責切換資料來源，僅讀取 settings；實際切換請於「系統設置」進行。
+ * 完整可執行版本：
+ * - 修正所有未宣告的狀態 / 計算屬性
+ * - 整合全域主題（light/dark/auto）自動同步
+ * - 角色群組 CRUD、拖曳排序、門市套用群組、複製設定
+ * - 資料來源由 datasource 統一管理（mock / firebase）
  */
 import { reactive, ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import Sortable from 'sortablejs'
-import * as ds from '@/store/datasource' // 須提供 read/subscribe/upsertRoleGroup/renameRole/deleteRoleGroup/setStoreGroups/duplicateStoreGroups
+import * as ds from '@/store/datasource'
 
 defineOptions({ name: 'BossRoleGroups' })
 
-/* —— 權限定義 —— */
+/* ==================== 主題同步（light/dark/auto） ==================== */
+function applyTheme(mode) {
+  const pref = mode || localStorage.getItem('theme') || 'light'
+  const shouldDark =
+    pref === 'dark' ||
+    (pref === 'auto' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
+  document.documentElement.classList.toggle('dark', !!shouldDark)
+}
+onMounted(() => {
+  const saved = localStorage.getItem('theme')
+  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+  applyTheme(saved ?? (prefersDark ? 'dark' : 'light'))
+  window.addEventListener('storage', e => {
+    if (e.key === 'theme') applyTheme(e.newValue)
+  })
+})
+
+/* ==================== 權限定義（分門別類） ==================== */
 const PERM_CATEGORIES = {
   '基本庫存作業': [
     '查看儀表板','盤點作業','入庫（進貨/退料）','出庫（銷售/領料）',
@@ -287,14 +300,14 @@ const PERM_CATEGORIES = {
   '帳號與系統': ['管理使用者','角色與權限管理','門市與組織管理','通知/警示設定','系統設定'],
 }
 
-/* —— 資料來源 —— */
+/* ==================== 資料來源（讀取 / 訂閱） ==================== */
 const view = reactive(ds.read() || {})
+view.storeGroups ||= {}
+view.roleGroups  ||= []
+view.stores      ||= []
+
 let unsubscribe = null
 onMounted(() => {
-  // 確保必要容器存在
-  view.storeGroups ||= {}
-  view.roleGroups  ||= []
-  view.stores      ||= []
   unsubscribe = ds.subscribe?.((snap) => {
     if (!snap) return
     Object.assign(view, snap)
@@ -303,17 +316,16 @@ onMounted(() => {
     view.stores      ||= []
   })
 })
-onBeforeUnmount(() => { unsubscribe?.() })
+onBeforeUnmount(() => unsubscribe?.())
 
-/* —— 從設定讀關鍵資訊（不會拋錯） —— */
+/* 從 settings 推導 */
 const safeSettings = computed(() => ({
-  timezone: view?.settings?.i18n?.timezone ?? 'tw-taipei',
   defaultStoreId: view?.settings?.store?.defaultStoreId ?? (view?.stores?.[0]?.id || ''),
-  datasourceMode: view?.settings?.datasource?.mode ?? 'mock', // 'mock' | 'firebase'
+  datasourceMode: view?.settings?.datasource?.mode ?? (localStorage.getItem('ds-mode') || 'mock'),
 }))
 const dataSourceMode = computed(() => safeSettings.value.datasourceMode)
 
-/* —— RWD / 側欄 —— */
+/* ==================== RWD / 側欄 ==================== */
 const drawerOpen = ref(false)
 const collapsed  = ref(loadBool('brg-collapsed', false))
 const isMobile   = ref(matchMedia('(max-width: 1024px)').matches)
@@ -331,11 +343,13 @@ function handleResize(){
 window.addEventListener('resize', handleResize)
 onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
 
-/* —— 狀態 —— */
-const activeTab = ref('stores')
+/* ==================== 狀態：分頁 / 選取 ==================== */
+const activeTab = ref('stores')     // 'roles' | 'stores'
 const qRole = ref(''), qStore = ref('')
+
 const selectedRoleId = ref(null)
 const selectedStoreId = ref(null)
+
 const editing = reactive({ id:null, name:'', permissions:[] })
 const creating = ref(false)
 const editorTitle = computed(() => (creating.value ? '新增權限群組' : (editing.id ? '編輯權限群組' : '權限群組')))
@@ -346,7 +360,7 @@ const canSave = computed(() =>
 )
 const showEditor = computed(() => activeTab.value==='roles' && (creating.value || selectedRoleId.value !== null))
 
-/* —— 權限搜尋與展開 —— */
+/* 權限搜尋 / 展開 */
 const permQuery = ref('')
 const permCheckedOnly = ref(false)
 const openCats = reactive(Object.fromEntries(Object.keys(PERM_CATEGORIES).map(k => [k, true])))
@@ -362,48 +376,48 @@ const filteredPermByCategory = computed(() => {
   return result
 })
 
-/* —— 派生清單 —— */
+/* ==================== 派生清單 ==================== */
 const roleMap = computed(() => new Map((view.roleGroups||[]).map(g => [g.id, g])))
 const filteredRoleGroups = computed(() => {
   const q = qRole.value.trim()
-  const list = view.roleGroups || []
+  const list = Array.isArray(view.roleGroups) ? view.roleGroups : []
   return !q ? list : list.filter(g =>
     g.name.includes(q) || (g.permissions||[]).some(p => p.includes(q))
   )
 })
 const filteredStores = computed(() => {
   const q = qStore.value.trim()
-  const list = view.stores || []
-  return !q ? list : list.filter(s => s.name.includes(q))
+  const list = Array.isArray(view.stores) ? view.stores : []
+  return !q ? list : list.filter(s => (s?.name || '').includes(q))
 })
-const currentStore = computed(() => (view.stores || []).find(s => s.id === selectedStoreId.value) || null)
+const currentStore = computed(() =>
+  (Array.isArray(view.stores) ? view.stores : []).find(s => s.id === selectedStoreId.value) || null
+)
 
-/* —— 共用 —— */
-function renderPerms(list){ const arr = list || []; return arr.slice(0,5).join('、') + (arr.length>5?'…':'') }
+/* ==================== 共用 / Toast ==================== */
+function renderPerms(list){ const arr = Array.isArray(list) ? list : []; return arr.slice(0,5).join('、') + (arr.length>5?'…':'') }
 function roleNameById(id){ return roleMap.value.get(id)?.name || '(已刪除)' }
-function toast(msg){ toastMsg.value = msg; clearTimeout(_toastTimer); _toastTimer = setTimeout(()=>toastMsg.value='',1600) }
 const toastMsg = ref(''); let _toastTimer = 0
+function toast(msg){ toastMsg.value = msg; clearTimeout(_toastTimer); _toastTimer = setTimeout(()=>toastMsg.value='',1600) }
 
-/* —— 初始化預設門市 —— */
+/* 預設選取門市 */
 onMounted(() => {
-  // 預設選擇門市（若在 stores 分頁）
   if (activeTab.value==='stores') {
     const def = safeSettings.value.defaultStoreId
-    selectedStoreId.value = def && (view.stores||[]).some(s=>s.id===def)
-      ? def
-      : (view.stores?.[0]?.id || null)
+    const hasDef = (view.stores||[]).some(s=>s.id===def)
+    selectedStoreId.value = hasDef ? def : (view.stores?.[0]?.id || null)
   }
 })
 
-/* —— 異動監聽：確保選取項目仍存在 —— */
-watch(() => view.stores?.map(s => s.id).join(','), () => {
+/* 異動時校正選取 */
+watch(() => (view.stores||[]).map(s => s.id).join(','), () => {
   if (!selectedStoreId.value) {
     selectedStoreId.value = safeSettings.value.defaultStoreId || (view.stores?.[0]?.id || null)
   } else if (!(view.stores||[]).some(s => s.id === selectedStoreId.value)) {
     selectedStoreId.value = view.stores?.[0]?.id || null
   }
 })
-watch(() => view.roleGroups?.map(g => g.id).join(','), () => {
+watch(() => (view.roleGroups||[]).map(g => g.id).join(','), () => {
   if (selectedRoleId.value && !(view.roleGroups||[]).some(g => g.id === selectedRoleId.value)) {
     selectedRoleId.value = null
     creating.value = false
@@ -411,7 +425,7 @@ watch(() => view.roleGroups?.map(g => g.id).join(','), () => {
   }
 })
 
-/* —— 左側操作 —— */
+/* ==================== 左側操作 ==================== */
 function switchTab(tab){
   activeTab.value = tab
   if (tab === 'roles') {
@@ -420,9 +434,8 @@ function switchTab(tab){
     Object.assign(editing,{id:null,name:'',permissions:[]})
   } else {
     const def = safeSettings.value.defaultStoreId
-    selectedStoreId.value = def && (view.stores||[]).some(s=>s.id===def)
-      ? def
-      : (view.stores?.[0]?.id || null)
+    const hasDef = (view.stores||[]).some(s=>s.id===def)
+    selectedStoreId.value = hasDef ? def : (view.stores?.[0]?.id || null)
   }
 }
 function selectRole(id){
@@ -449,7 +462,7 @@ function isDuplicateRoleName(name, selfId){
   return (view.roleGroups||[]).some(g => g.name === name && g.id !== selfId)
 }
 
-/* —— 角色群組 CRUD —— */
+/* ==================== 角色群組 CRUD ==================== */
 async function trySaveRole(){
   if (!editing.name.trim()) return toast('請輸入群組名稱')
   if ((editing.permissions?.length||0)===0) return toast('請至少勾選一個權限')
@@ -494,7 +507,7 @@ async function removeRole(id, name){
   toast('已刪除群組並同步門市設定')
 }
 
-/* —— 權限工具 —— */
+/* 權限工具 */
 function toggleCat(cat){ openCats[cat] = !openCats[cat] }
 function selectAllFiltered(){
   const q = permQuery.value.trim()
@@ -528,7 +541,7 @@ function cancelEdit(){
   if (selectedRoleId.value) selectRole(selectedRoleId.value)
 }
 
-/* —— 門市配置 —— */
+/* ==================== 門市配置 ==================== */
 function selectStore(id){ selectedStoreId.value = id }
 function toggleAssign(g){
   if (!selectedStoreId.value) return toast('請先選擇門市')
@@ -556,13 +569,13 @@ async function duplicateStoreSetup(){
   const targets = (view.stores||[]).filter(s=>names.includes(s.name)).map(s => s.id)
   if (!targets.length) return toast('找不到指定門市')
   await ds.duplicateStoreGroups?.(src, targets)
-  // 本地也同步
+  // 本地同步
   const srcList = view.storeGroups?.[src] || []
   for (const id of targets) view.storeGroups[id] = [...srcList]
   toast('已複製設定')
 }
 
-/* —— 拖曳排序 —— */
+/* ==================== 拖曳排序 ==================== */
 const roleListRef = ref(null)
 const appliedRef   = ref(null)
 onMounted(() => {
@@ -578,9 +591,9 @@ onMounted(() => {
             .map(el => el.dataset.id).filter(Boolean)
           const map = new Map((view.roleGroups||[]).map(g => [g.id, g]))
           const newList = idsInDom.map(id => map.get(id)).filter(Boolean)
-          // 把剩餘未出現在 DOM 的（例如搜尋過濾）接在後面，避免遺失
+          // 把搜尋過濾藏起來的補回尾端
           ;(view.roleGroups||[]).forEach(g => { if (!idsInDom.includes(g.id)) newList.push(g) })
-          // 批次覆寫順序（以 upsert 確保相容）
+          // 依序 upsert 以維持順序（資料層可選擇寫入 index 欄位）
           for (const g of newList) await ds.upsertRoleGroup?.(g)
           toast('已更新群組排序')
         }
@@ -605,10 +618,10 @@ onMounted(() => {
   })
 })
 
-/* —— 導航 —— */
+/* ==================== 導航 ==================== */
 function goHome(){
   try {
-    // 若專案有 router，可直接使用
+    // 若專案有 router
     // eslint-disable-next-line no-eval
     const r = (eval('window.__app_router__')) || null
     if (r?.push) { r.push('/'); return }
@@ -616,44 +629,63 @@ function goHome(){
   if (location.hash !== '#/') location.hash = '#/'
 }
 
-/* —— helpers —— */
+/* ==================== helpers ==================== */
 function loadBool(key, d=false){ try{ return JSON.parse(localStorage.getItem(key) ?? String(d)) }catch{ return d } }
 function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
 </script>
 
 <style scoped>
+:root{
+  --bg:#f6f8fc;
+  --text:#111827;
+  --card-bg:#fff;
+  --border:#e6eaf2;
+  --muted:#64748b;
+  --chip-bg:#fff;
+  --chip-on:#eef2ff;
+}
+.dark{
+  --bg:#0f172a;
+  --text:#e2e8f0;
+  --card-bg:#1e293b;
+  --border:#334155;
+  --muted:#94a3b8;
+  --chip-bg:#1e293b;
+  --chip-on:#273549;
+}
+
 /* —— 版面與 UI —— */
-.page{display:grid;grid-template-columns:var(--side-w,320px) 1fr;gap:16px;padding:16px;background:#f6f8fc;min-height:100vh;position:relative}
+.page{display:grid;grid-template-columns:var(--side-w,320px) 1fr;gap:16px;padding:16px;background:var(--bg);color:var(--text);min-height:100vh;position:relative}
 .page.is-collapsed{grid-template-columns:0px 1fr}
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:40}
 .only-mobile{display:none}.only-desktop{display:inline-flex}
 @media (max-width:1024px){ .only-mobile{display:inline-flex} .only-desktop{display:none} .page{grid-template-columns:1fr} }
 
-.side{position:sticky;top:16px;align-self:start;background:#fff;border:1px solid #e6eaf2;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 48px);width:var(--side-w,320px);transition: width .2s ease, transform .25s ease}
+.side{position:sticky;top:16px;align-self:start;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 48px);width:var(--side-w,320px);transition: width .2s ease, transform .25s ease}
 .side.collapsed{border-color:transparent}
-.side-header{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid #f0f3f8}
+.side-header{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border)}
 .title{font-weight:800}
-.icon-btn{border:none;background:transparent;font-size:18px;cursor:pointer;opacity:.85;padding:4px 6px}
+.icon-btn{border:none;background:transparent;font-size:18px;cursor:pointer;opacity:.85;padding:4px 6px;color:var(--text)}
 .icon-btn:hover{opacity:1}
 .spacer{flex:1}
-.seg{display:flex;gap:8px;padding:12px;border-bottom:1px solid #f0f3f8}
-.seg-btn{flex:1;padding:10px;border:1px solid #e6eaf2;border-radius:10px;background:#f7f9fe;cursor:pointer}
-.seg-btn.active{background:#e6f4ff;border-color:#cfe9ff}
-.side-tools{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid #f0f3f8}
+.seg{display:flex;gap:8px;padding:12px;border-bottom:1px solid var(--border)}
+.seg-btn{flex:1;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--chip-bg);cursor:pointer;color:var(--text)}
+.seg-btn.active{background:var(--chip-on);border-color:#cfe9ff}
+.side-tools{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)}
 .side-list{padding:12px;overflow:auto}
 
 .ds-badge{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;color:#334155}
 .ds-badge.firebase{color:#0f766e;border-color:#99f6e4;background:#ecfeff}
 .ds-badge.mock{color:#6b7280;border-color:#e5e7eb;background:#fafafa}
 
-.item{border:1px solid #e6eaf2;border-radius:12px;padding:10px;background:#fff;cursor:pointer;margin-bottom:10px}
+.item{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card-bg);cursor:pointer;margin-bottom:10px}
 .item.selected{outline:2px solid #9ec5ff}
 .item-title{font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px}
 .grip{cursor:grab;opacity:.6}
 .floating-opener{position:fixed;left:12px;top:16px;z-index:30;border:1px solid #e1e7f0;border-radius:10px;background:#fff;padding:6px 10px;box-shadow:0 3px 12px rgba(0,0,0,.08);cursor:pointer}
 
-.card{background:#fff;border:1px solid #e6eaf2;border-radius:16px;box-shadow:0 2px 10px rgba(17,24,39,.04);min-height:calc(100vh - 48px)}
-.card-title{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f0f3f8;font-weight:700}
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 10px rgba(17,24,39,.04);min-height:calc(100vh - 48px)}
+.card-title{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700}
 .topbar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .topbar-title{font-weight:800}
 
@@ -663,34 +695,38 @@ function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
 .perm-toolbar{display:flex;gap:8px;align-items:center;margin:10px 0}
 .chk{display:flex;gap:6px;align-items:center;color:#475569}
 .perm-section{border:1px solid #eef2f7;border-radius:12px;margin-bottom:12px;background:#fbfcff}
+.dark .perm-section{background:#1b2433;border-color:#334155}
 .perm-section-title{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer;font-weight:700}
-.perm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;border-top:1px dashed #e6eaf2;padding:12px}
-.perm{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #eef2f7;border-radius:10px;background:#fff}
+.perm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;border-top:1px dashed var(--border);padding:12px}
+.perm{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg)}
 
 .store-panel{padding:12px}
 .store-title{font-weight:800;margin-bottom:8px}
-.subcard{border:1px solid #eef2f7;border-radius:12px;padding:12px;margin-top:10px;background:#fbfcff}
+.subcard{border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px;background:#fbfcff}
+.dark .subcard{background:#1b2433}
 .sub-title{font-weight:700;margin-bottom:8px}
 .applied{display:flex;gap:8px;flex-wrap:wrap;min-height:40px}
-.tag{background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:6px 10px;display:flex;align-items:center;gap:6px}
+.tag{background:var(--chip-on);border:1px solid #c7d2fe;border-radius:999px;padding:6px 10px;display:flex;align-items:center;gap:6px}
 .tag.active{outline:2px solid #93c5fd}
-.x{border:none;background:transparent;cursor:pointer;opacity:.7}
+.x{border:none;background:transparent;cursor:pointer;opacity:.7;color:var(--text)}
 .x:hover{opacity:1}
-.dock{margin-top:12px;border-top:1px solid #f0f3f8;padding-top:12px}
+.dock{margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
 .dock-title{font-size:13px;color:#475569;margin-bottom:6px}
 .dock-list{display:flex;gap:8px;flex-wrap:wrap}
-.dock-btn{border:1px solid #e6eaf2;background:#fff;border-radius:10px;padding:6px 8px;cursor:pointer}
-.dock-btn.active{background:#e6f4ff;border-color:#cfe9ff}
+.dock-btn{border:1px solid var(--border);background:var(--card-bg);border-radius:10px;padding:6px 8px;cursor:pointer;color:var(--text)}
+.dock-btn.active{background:var(--chip-on);border-color:#cfe9ff}
 
 .btn{border:1px solid #cfe0ff;background:#fff;color:#2563eb;border-radius:12px;padding:8px 12px;cursor:pointer}
+.dark .btn{background:#0f172a}
 .btn.primary{background:#2563eb;color:#fff;border-color:#2563eb}
-.btn.ghost{background:#fff;border-color:#e6eaf2;color:#334155}
+.btn.ghost{background:var(--card-bg);border-color:var(--border);color:#334155}
+.dark .btn.ghost{color:#e2e8f0}
 .btn.small{padding:6px 10px}
 .link{background:transparent;border:none;color:#2563eb;cursor:pointer}
 .link.danger{color:#dc2626}
 .small{font-size:12px}
 .center{text-align:center}
-.muted{color:#64748b}
+.muted{color:var(--muted)}
 .toast{position:fixed;right:16px;bottom:16px;background:#111827;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.12);z-index:60}
 .fade-enter-active,.fade-leave-active{transition:opacity .2s}
 .fade-enter-from,.fade-leave-to{opacity:0}

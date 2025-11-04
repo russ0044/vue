@@ -1,32 +1,35 @@
 // src/seed/seedData.js
-// 統一假資料 / 本地初始資料（海南雞主題加強版）
+// 統一假資料 / 本地初始資料（海南雞主題加強版，與路由/元件全面對齊）
 // - 門市、庫存、中央廚房單據、供應商、邀請碼
-// - 角色/權限：Boss、StoreManager（店長）、Staff（店員）、Kitchen（中央廚房）
-// - 老闆端 / 門市端 / 中央廚房端 都用同一份
-// - runtime.mode / runtime.theme 讓各頁直接讀「現在系統是在 local 還是 firebase」&「目前主題」
-// 注意：修改主題或資料來源請用「系統設定」頁處理，頁面內勿硬改。
+// - 角色/權限：Boss、StoreManager（店長）、Staff（店員）、Kitchen（中央廚房），另增 Auditor（只讀報表）
+// - 老闆端 / 門市端 / 中央廚房端 共用
+// - settings.datasource.mode / settings.i18n.timezone / settings.roles 供 UI 直接讀取
+// - storeGroups：各門市已套用的權限群組（BossRoleGroups 右側 Dock 會用）
+// - runtime.theme 留給全域主題切換（搭配 :root.dark）
 
 export const seedData = {
   /* =========================
    * 門市 / 據點
    * ========================= */
   stores: [
-    { id: 'hn-taipei',        name: '海南雞 台北店' },
-    { id: 'hn-taichung',      name: '海南雞 台中店' },
-    { id: 'hn-kaohsiung',     name: '海南雞 高雄店' },
-    { id: 'central-kitchen',  name: '海南雞 中央廚房', isCentral: true },
+    { id: 'hn-taipei',       name: '海南雞 台北店' },
+    { id: 'hn-taichung',     name: '海南雞 台中店' },
+    { id: 'hn-kaohsiung',    name: '海南雞 高雄店' },
+    { id: 'central-kitchen', name: '海南雞 中央廚房', isCentral: true },
   ],
 
   /* =========================
-   * 角色群組 / 權限（與路由守衛對齊）
+   * 角色群組 / 權限（與 router meta.requiresPerm 對齊）
+   * 欄位統一用 permissions
    * ========================= */
   roleGroups: [
     {
       id: 'rg-boss',
       name: 'Boss（老闆）',
-      perms: [
-        // 老闆具備所有後台管理權限
+      permissions: [
+        // 後台管理與查詢（全開）
         'inventory.view',
+        'inventory.edit',
         'ingredients.view',
         'roles.manage',
         'stores.manage',
@@ -34,44 +37,70 @@ export const seedData = {
         'orders.config',
         'invite.generate',
         'reports.view',
+        // 門市端
         'orders.view',
+        'orders.create',
         'delivery.view',
+        // 廚房端
         'kitchen.manage',
       ],
     },
     {
       id: 'rg-store-manager',
       name: 'StoreManager（店長）',
-      // 員工端店長權限（比一般員工更開）
-      perms: [
+      // 單店多數權限：可看報表、可看/編輯庫存、可看/建立訂單、可看配送
+      permissions: [
         'inventory.view',
+        'inventory.edit',   // ★ 新增：店長可編輯庫存（盤點/調整）
         'ingredients.view',
         'orders.view',
+        'orders.create',    // ★ 新增：店長可送單/建立
         'delivery.view',
-        'reports.view', // 店長可看報表
-        // 不允許：roles.manage / stores.manage / thresholds.manage / orders.config / invite.generate / kitchen.manage
+        'reports.view',
+        // 不允許：roles.manage / stores.manage / thresholds.manage / orders.config / invite.generate / （不直接開）kitchen.manage
       ],
     },
     {
       id: 'rg-staff',
       name: 'Staff（店員）',
-      perms: [
+      // 一般員工：可查看庫存、可送單、可看配送；不開報表/主檔
+      permissions: [
         'inventory.view',
         'orders.view',
+        'orders.create',    // ★ 新增：維持員工可送單的體驗
         'delivery.view',
-        // 一般店員不可看報表、不可改食材主檔
       ],
     },
     {
       id: 'rg-kitchen',
       name: 'Kitchen（中央廚房）',
-      perms: [
+      // 補齊廚房需要的訂單/庫存/報表權限
+      permissions: [
         'kitchen.manage',
-        'reports.view', // 可查看廚房相關報表
-        // 一般不動門市主檔/群組/門檻
+        'inventory.view',
+        'inventory.edit',
+        'orders.view',
+        'orders.create',
+        'reports.view',
       ],
     },
+    {
+      id: 'rg-auditor',
+      name: 'Auditor（稽核/審計）',
+      permissions: ['reports.view'],
+    },
   ],
+
+  /* =========================
+   * 門市已套用的群組（BossRoleGroups 右側 Dock/Applied 使用）
+   * - key = storeId, value = roleGroupId 陣列（順序可拖曳）
+   * ========================= */
+  storeGroups: {
+    'hn-taipei':      ['rg-store-manager', 'rg-staff'],
+    'hn-taichung':    ['rg-staff'],
+    'hn-kaohsiung':   ['rg-staff'],
+    'central-kitchen':['rg-kitchen'],
+  },
 
   /* =========================
    * 各據點即時庫存（含中央廚房原料）
@@ -152,20 +181,30 @@ export const seedData = {
    * 安全庫存/警戒門檻
    * ========================= */
   thresholds: [
-    { id: 'hn-taipei',        storeId: 'hn-taipei',        minQty: 6 },
-    { id: 'hn-taichung',      storeId: 'hn-taichung',      minQty: 6 },
-    { id: 'hn-kaohsiung',     storeId: 'hn-kaohsiung',     minQty: 6 },
-    { id: 'central-kitchen',  storeId: 'central-kitchen',  minQty: 20 }, // 廚房的備料要求較高
+    { id: 'hn-taipei',       storeId: 'hn-taipei',       minQty: 6 },
+    { id: 'hn-taichung',     storeId: 'hn-taichung',     minQty: 6 },
+    { id: 'hn-kaohsiung',    storeId: 'hn-kaohsiung',    minQty: 6 },
+    { id: 'central-kitchen', storeId: 'central-kitchen', minQty: 20 },
   ],
 
   /* =========================
-   * 系統設定
+   * 系統設定（供 UI 直接讀取）
    * ========================= */
   settings: {
     store: {
       allowNegativeStock: false,
       defaultStoreId: 'hn-taipei',
       defaultExpDays: 3,
+    },
+    roles: {
+      emp: '員工',
+      kitchen: '中央廚房',
+    },
+    datasource: {
+      mode: 'mock', // 'mock' | 'firebase'
+    },
+    i18n: {
+      timezone: 'Asia/Taipei',
     },
   },
 
@@ -182,8 +221,7 @@ export const seedData = {
   ],
 
   /* =========================
-   * 可下單品項清單 / 來源對應（海南雞完整組合）
-   * cat：便於在 UI 分區：熟食區 / 半成品 / 調味 / 蔬菜 / 主食 / 包材
+   * 可下單品項清單 / 來源對應
    * ========================= */
   products: [
     // 熟食 / 半成品（給門市出餐）
@@ -223,9 +261,6 @@ export const seedData = {
 
   /* =========================
    * 中央廚房流程資料
-   * 1. kitchenRequests：門市送來的「請貨單」
-   * 2. kitchenOrders：中央廚房準備出貨的「訂單」
-   * 3. kitchenRecords：已經完成並留檔的出貨紀錄
    * ========================= */
   kitchenRequests: [
     {
@@ -235,10 +270,10 @@ export const seedData = {
       status: 'pending',        // pending | partial | done
       allowPartial: true,
       items: [
-        { key:'r1', cat:'半成品', name:'去骨雞腿（真空包，生）', unit:'包', qty:40, ready:20, note:'午高峰優先' },
-        { key:'r2', cat:'半成品', name:'雞高湯基底',             unit:'桶', qty:10, ready: 5, note:'' },
-        { key:'r3', cat:'調味',   name:'薑蓉醬',                   unit:'罐', qty:12, ready:12, note:'' },
-        { key:'r4', cat:'包材',   name:'醬料杯（30ml）',           unit:'個', qty:300,ready:300,note:'' },
+        { key:'r1', cat:'半成品', name:'去骨雞腿（真空包，生）', unit:'包',   qty:40, ready:20, note:'午高峰優先' },
+        { key:'r2', cat:'半成品', name:'雞高湯基底',             unit:'桶',   qty:10, ready: 5, note:'' },
+        { key:'r3', cat:'調味',   name:'薑蓉醬',                   unit:'罐',   qty:12, ready:12, note:'' },
+        { key:'r4', cat:'包材',   name:'醬料杯（30ml）',           unit:'個',   qty:300,ready:300,note:'' },
       ],
     },
     {
@@ -248,15 +283,14 @@ export const seedData = {
       status: 'pending',
       allowPartial: false,
       items: [
-        { key:'r5', cat:'半成品', name:'去骨雞胸（真空包，生）', unit:'包', qty:30, ready:0, note:'' },
+        { key:'r5', cat:'半成品', name:'去骨雞胸（真空包，生）', unit:'包',   qty:30, ready:0, note:'' },
         { key:'r6', cat:'主食',   name:'泰國香米',                 unit:'公斤', qty:60, ready:0, note:'' },
-        { key:'r7', cat:'蔬菜',   name:'小黃瓜',                   unit:'條', qty:30, ready:0, note:'' },
+        { key:'r7', cat:'蔬菜',   name:'小黃瓜',                   unit:'條',   qty:30, ready:0, note:'' },
       ],
     },
   ],
 
   kitchenOrders: [
-    // 通常是 kitchenRequests 轉過來的「準備出貨單」
     {
       id: 'KO-1',
       storeId: 'hn-taipei',
@@ -271,7 +305,6 @@ export const seedData = {
   ],
 
   kitchenRecords: [
-    // 出貨完的留存紀錄（示例）
     {
       id: 'KD-1',
       storeId: 'hn-kaohsiung',
@@ -287,25 +320,25 @@ export const seedData = {
 
   /* =========================
    * 帳號 / 使用者
-   * - 3 端皆有角色
-   * - 員工端以台北店「店長（StoreManager）」示範較開放權限
+   * - 角色欄位統一為 'Boss' | 'Employee' | 'Kitchen'
+   * - 店長與店員都屬 Employee，但 roleGroupId 不同
    * ========================= */
   users: [
     // 老闆（擁有 rg-boss 全權）
-    { id: 'U001', roleGroupId: 'rg-boss',    role: 'boss',    name: '老闆',         email: 'boss@hunanchicken.example' },
+    { id: 'U001', roleGroupId: 'rg-boss', role: 'Boss', name: '老闆', email: 'boss@hunanchicken.example' },
 
-    // 台北店（有店長與店員）
-    { id: 'U101', roleGroupId: 'rg-store-manager', role: 'staff',   name: '台北店長A', email: 'tpe-manager@hunanchicken.example',  storeId: 'hn-taipei' },
-    { id: 'U102', roleGroupId: 'rg-staff',         role: 'staff',   name: '台北店員B', email: 'tpe-staff-b@hunanchicken.example',  storeId: 'hn-taipei' },
+    // 台北店：店長 + 店員
+    { id: 'U101', roleGroupId: 'rg-store-manager', role: 'Employee', name: '台北店長A', email: 'tpe-manager@hunanchicken.example', storeId: 'hn-taipei' },
+    { id: 'U102', roleGroupId: 'rg-staff',         role: 'Employee', name: '台北店員B',  email: 'tpe-staff-b@hunanchicken.example', storeId: 'hn-taipei' },
 
-    // 台中店（一般店員）
-    { id: 'U201', roleGroupId: 'rg-staff',         role: 'staff',   name: '台中店員A', email: 'txg-staff-a@hunanchicken.example',  storeId: 'hn-taichung' },
+    // 台中店：一般店員
+    { id: 'U201', roleGroupId: 'rg-staff',         role: 'Employee', name: '台中店員A',  email: 'txg-staff-a@hunanchicken.example', storeId: 'hn-taichung' },
 
-    // 高雄店（一般店員）
-    { id: 'U301', roleGroupId: 'rg-staff',         role: 'staff',   name: '高雄店員A', email: 'khh-staff-a@hunanchicken.example',  storeId: 'hn-kaohsiung' },
+    // 高雄店：一般店員
+    { id: 'U301', roleGroupId: 'rg-staff',         role: 'Employee', name: '高雄店員A',  email: 'khh-staff-a@hunanchicken.example', storeId: 'hn-kaohsiung' },
 
     // 中央廚房人員
-    { id: 'U900', roleGroupId: 'rg-kitchen',       role: 'kitchen', name: '中央廚房人員', email: 'kitchen@hunanchicken.example',     storeId: 'central-kitchen' },
+    { id: 'U900', roleGroupId: 'rg-kitchen',       role: 'Kitchen',  name: '中央廚房人員', email: 'kitchen@hunanchicken.example',    storeId: 'central-kitchen' },
   ],
 
   /* =========================
@@ -320,13 +353,10 @@ export const seedData = {
   ],
 
   /* =========================
-   * 執行階段設定（會隨使用者操作改變）
-   * - mode: 'local' | 'firebase'
-   * - theme: 'light' | 'dark'
+   * 執行階段設定（可由系統設定頁寫回）
    * ========================= */
   runtime: {
-    mode: 'local',   // 初始為 local。系統設定切到 Firebase 後更新成 'firebase'
-    theme: 'light',  // 或 'dark'；主題切換時請同步寫回來
+    theme: 'light',
   },
 };
 
