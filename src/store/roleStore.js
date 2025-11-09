@@ -10,29 +10,30 @@ import * as ds from '@/store/datasource'
 
 const state = reactive({
   role: null,   // 'Boss' | 'Employee' | 'Kitchen' | null
-  perms: [],    // 權限字串陣列
-  ready: false, // 資料是否已完成初始化
+  perms: [],    // 權限字串陣列（僅供 UI 顯示；權限判斷請用 usePerm()）
+  ready: false, // 是否已完成初始化（從 localStorage 還原）
 })
 
 /** 設定角色（登入成功後呼叫） */
 function setRole(r) {
   if (!r) return
   state.role = r
-  localStorage.setItem('role', r)
-  // 若 datasource 有 runtime，可同步
+  try { localStorage.setItem('role', r) } catch {}
+  // 若 datasource 有 runtime，可嘗試同步顯示（非必要，失敗可忽略）
   try {
     const snap = ds.read?.() || {}
-    if (snap.runtime) {
+    if (snap && snap.runtime) {
+      // 注意：snap 很可能是深拷貝；這裡僅做提示性的同步並要求 refresh()
       snap.runtime.lastRole = r
       ds.refresh?.()
     }
   } catch {}
 }
 
-/** 設定權限（可選） */
+/** 設定權限（選填；多數情況請改用 src/store/perm.js 動態計算） */
 function setPerms(p) {
-  state.perms = Array.isArray(p) ? p : []
-  localStorage.setItem('perms', JSON.stringify(state.perms))
+  state.perms = Array.isArray(p) ? p.slice() : []
+  try { localStorage.setItem('perms', JSON.stringify(state.perms)) } catch {}
 }
 
 /** 重整後還原角色與權限 */
@@ -56,18 +57,20 @@ function clearRole() {
   state.role = null
   state.perms = []
   state.ready = false
-  localStorage.removeItem('role')
-  localStorage.removeItem('perms')
+  try {
+    localStorage.removeItem('role')
+    localStorage.removeItem('perms')
+  } catch {}
   try {
     const snap = ds.read?.() || {}
-    if (snap.runtime) {
+    if (snap && snap.runtime) {
       snap.runtime.lastRole = null
       ds.refresh?.()
     }
   } catch {}
 }
 
-/** 工具：是否擁有指定權限 */
+/** 工具：是否擁有指定權限（僅檢查本 store 的 perms 陣列） */
 function hasPerm(permKey) {
   return Array.isArray(state.perms) && state.perms.includes(permKey)
 }
@@ -89,7 +92,7 @@ function initRoleStore() {
   }
 }
 
-/** 對外導出 */
+/** 對外導出（與現有呼叫方式相容） */
 export function useRoleStore() {
   return {
     state,

@@ -4,10 +4,11 @@
 // 所有頁面、元件一律只 import 這個檔案匯出的 API。
 // - 模式記在 localStorage('ds-mode')：'mock' | 'firebase'（預設 'mock'）
 // - 各功能以「有實作就呼叫、沒有就安全提示」為原則，避免打爆 UI。
+// - 與你現有的元件相容：getMode()/setMode()、read()/subscribe()、setTheme()…
 // ─────────────────────────────────────────────────────────────────────────────
 
 /* eslint-disable no-console */
-import * as localImpl from './datasource/local'   // 你已實作（含 seed / 角色群組 / 庫存等）
+import * as localImpl from './datasource/local'    // 已實作（含 seed / 角色群組 / 庫存等）
 import * as fbImpl    from './datasource/firebase' // 可為 stub；本檔已做防呆
 
 // 目前運行模式：localStorage 優先，否則 'mock'
@@ -16,16 +17,13 @@ let mode = (() => {
 })()
 
 function getImpl() {
-  // 若未提供 firebase 實作，保守退回 localImpl / mock
+  // 若設定 firebase 但未提供實作，退回 local
   if (mode === 'firebase') {
-    const hasAny =
-      typeof fbImpl?.read === 'function' ||
-      typeof fbImpl?.subscribe === 'function'
+    const hasAny = typeof fbImpl?.read === 'function' || typeof fbImpl?.subscribe === 'function'
     if (hasAny) return fbImpl
-    console.warn('[datasource] 目前模式設定為 firebase，但未找到對應實作，改用 mock/local。')
+    console.warn('[datasource] 目前模式為 firebase，但未找到對應實作，改用 mock/local。')
     return localImpl
   }
-  // mock / local 皆走 localImpl
   return localImpl
 }
 
@@ -44,7 +42,7 @@ export async function setMode(nextMode) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 共同工具：有實作就呼叫；沒有就警告（不拋例外）
+// 共用呼叫封裝：有實作就呼叫；沒有就警告（不拋例外，避免中斷 UI）
 // ─────────────────────────────────────────────────────────────────────────────
 function callOrWarn(fnName, ...args) {
   const impl = getImpl()
@@ -75,14 +73,13 @@ export function read() {
 /** 訂閱資料變動：若實作層無 subscribe，至少先丟一次快照並回傳空取消函式 */
 export function subscribe(cb) {
   const impl = getImpl()
-  if (typeof impl.subscribe === 'function') {
-    return impl.subscribe(cb)
-  }
-  cb?.(impl.read?.() || {})
+  if (typeof impl.subscribe === 'function') return impl.subscribe(cb)
+  // 沒有 subscribe 時，先回吐一次快照，避免畫面空白
+  try { cb?.(impl.read?.() || {}) } catch {}
   return () => {}
 }
 
-/** （可選）有些頁面會手動要求 refresh */
+/** 可選：有些頁面會手動要求 refresh */
 export function refresh() { return callOrWarn('refresh') }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,11 +109,10 @@ export function duplicateStoreGroups(src, destIds) { return callOrWarn('duplicat
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 庫存／門檻（Emp / Boss / Kitchen 3 端共用）
-// 注意：若當前模式沒實作，這些會安全地告警並不中斷 UI。
 // ─────────────────────────────────────────────────────────────────────────────
-export function upsertInventory(item)        { return callOrWarn('upsertInventory', item) }
-export function deleteInventory(storeId, sku){ return callOrWarn('deleteInventory', storeId, sku) }
-export function setThreshold(storeId, min)   { return callOrWarn('setThreshold', storeId, min) }
+export function upsertInventory(item)         { return callOrWarn('upsertInventory', item) }
+export function deleteInventory(storeId, sku) { return callOrWarn('deleteInventory', storeId, sku) }
+export function setThreshold(storeId, min)    { return callOrWarn('setThreshold', storeId, min) }
 
 // ─────────────────────────────────────────────────────────────────────────────
 /** （可選）產 ID：有些實作層提供 newId() */
@@ -128,18 +124,22 @@ export function newId() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 主題／模式（視覺）代理：若資料源有 setTheme，走資料源；否則直接寫 localStorage + data-attrs
+// 主題／模式（視覺）代理：若資料源有 setTheme，走資料源；否則直接切 html.dark
 // 讓「系統設置」可以單一呼叫這裡，確保 3 端一致。
 // ─────────────────────────────────────────────────────────────────────────────
 export function setTheme(theme) {
   const impl = getImpl()
   if (typeof impl.setTheme === 'function') return impl.setTheme(theme)
+
+  // 保留原值（'light' | 'dark' | 'auto'）
   try { localStorage.setItem('theme', theme) } catch {}
+
+  // 計算實際要套用的 class（你的樣式與元件皆以 .dark 判斷）
+  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+  const final = theme === 'auto' ? (prefersDark ? 'dark' : 'light') : theme
   const root = document.documentElement
-  const final = theme === 'auto'
-    ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : theme
-  root.setAttribute('data-theme', final)
+  if (final === 'dark') root.classList.add('dark')
+  else root.classList.remove('dark')
 }
 
 console.info('[datasource] 啟動完成（模式：' + mode + '）')

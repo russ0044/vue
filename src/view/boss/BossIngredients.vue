@@ -41,18 +41,28 @@
               </template>
             </div>
 
+            <!-- 左側標籤 chips：超過 5 個則開合 -->
             <div class="chips">
               <button
-                v-for="t in db.tags"
+                v-for="t in chipsDisplayList"
                 :key="t.id"
                 class="chip"
                 :class="{on: isChipOn(t.id)}"
                 @click="onChipClick(t.id)"
               >#{{ t.name }}</button>
+
+              <button
+                v-if="chipsMoreCount>0"
+                class="chip toggler"
+                @click="showAllChips = !showAllChips"
+                :title="showAllChips? '收起' : '展開全部'"
+              >
+                {{ showAllChips ? '收起' : `展開全部（+${chipsMoreCount}）` }}
+              </button>
             </div>
           </div>
 
-          <!-- 左欄清單 -->
+          <!-- 左欄清單：食材管理 -->
           <div class="side-list" v-if="tab==='manage'">
             <div
               v-for="it in filteredForList"
@@ -70,6 +80,7 @@
             <p v-if="!filteredForList.length" class="muted center">沒有符合的食材</p>
           </div>
 
+          <!-- 左欄清單：標籤管理 -->
           <div class="side-list" v-else-if="tab==='tags'" ref="tagListRef">
             <div class="tag-row" v-for="t in filteredTags" :key="t.id" :data-id="t.id">
               <span class="grip">⠿</span>
@@ -81,6 +92,7 @@
             <p v-if="!filteredTags.length" class="muted center">沒有標籤</p>
           </div>
 
+          <!-- 左欄清單：食材狀況（跳至右側對應列） -->
           <div class="side-list" v-else>
             <div
               v-for="it in filteredForStatus"
@@ -141,7 +153,16 @@
                 <div class="grow">
                   <div class="name"><strong>{{ it.name }}</strong> <span class="muted">（{{ it.code || '無代碼' }}）</span></div>
                   <div class="muted small">
-                    <span v-for="tid in it.tags" :key="tid" class="pill">#{{ tagName(tid) }}</span>
+                    <!-- 每列標籤最多顯示 5 個，可展開/收起 -->
+                    <span v-for="tid in rowTagShown(it)" :key="tid" class="pill">#{{ tagName(tid) }}</span>
+                    <button
+                      v-if="rowTagMoreCount(it) > 0"
+                      class="link tiny"
+                      @click="toggleRowExpand(it.id)"
+                      style="margin-left:6px"
+                    >
+                      {{ isRowExpanded(it.id) ? '收起' : `展開全部（+${rowTagMoreCount(it)}）` }}
+                    </button>
                     <span>｜單位：{{ it.unit }}｜安全庫存：{{ it.safeStock ?? '—' }}</span>
                     <span v-if="scope==='store' && isOverridden(it)" class="over-chip">已覆寫</span>
                   </div>
@@ -298,14 +319,17 @@ const placeholder = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
       fill="#94a3b8" font-family="sans-serif" font-size="14">No Image</text>
   </svg>`)
+
 const FALLBACK_KEY = 'boss-ingredients-fallback'
+const CHIP_LIMIT = 5          // 左列 chips 顯示上限
+const ROW_TAG_LIMIT = 5       // 右側每列標籤顯示上限
 
 /* ---------- 載入狀態 ---------- */
 const ready = ref(false)
 const errorMsg = ref('')
 
 /* ---------- 來源訂閱 ---------- */
-const snap = reactive(ds.read?.() || {})
+const snap = reactive((typeof ds.read === 'function' ? ds.read() : {}) || {})
 let unsub = null
 
 function ensureContainers(o){
@@ -332,7 +356,7 @@ onMounted(() => {
     errorMsg.value = String(e?.message || e)
   }
 })
-onBeforeUnmount(() => unsub?.())
+onBeforeUnmount(() => { try{unsub?.()}catch{} })
 
 /* ---------- 主資料（ingredients/tags） ---------- */
 const db = reactive({ stores: [], ingredients: [], tags: [] })
@@ -362,15 +386,27 @@ function loadDataFromSource(){
     } catch { /* 壞資料則忽略 */ }
   }
 
-  // 3) 由 inventory 推導
+  // 3) 由 inventory 推導（預設建立 5 種標籤）
   const seen = new Map()
-  const tagFresh = { id: rid(), name: '生鮮' }
-  const tagDry   = { id: rid(), name: '乾貨' }
-  const tagPack  = { id: rid(), name: '包材' }
+  const tagFresh      = { id: rid(), name: '生鮮' }
+  const tagDry        = { id: rid(), name: '乾貨' }
+  const tagPack       = { id: rid(), name: '包材' }
+  const tagOil        = { id: rid(), name: '油品' }
+  const tagSeasoning  = { id: rid(), name: '調味' }
 
   for (const i of (snap.inventory || [])) {
     const sku = i?.sku || i?.code || i?.name
     if (!sku || seen.has(sku)) continue
+
+    const nm = (i?.name || '').toString()
+    const unit = (i?.unit || '').toString()
+    let tagId
+    if (nm.includes('油')) tagId = tagOil.id
+    else if (nm.includes('醬')) tagId = tagSeasoning.id
+    else if (unit.includes('瓶') || unit.includes('罐') || unit.includes('盒')) tagId = tagPack.id
+    else if (i?.exp) tagId = tagFresh.id
+    else tagId = tagDry.id
+
     seen.set(sku, {
       id: rid(),
       code: sku,
@@ -383,13 +419,12 @@ function loadDataFromSource(){
       cost: 0, price: 0,
       statusGlobal: 'available',
       statusByStore: {},
-      tags: [ (i?.unit?.includes('瓶') || i?.unit?.includes('罐') || i?.unit?.includes('盒')) ? tagPack.id :
-              (i?.exp ? tagFresh.id : tagDry.id) ],
+      tags: [tagId],
       image: ''
     })
   }
   db.ingredients = Array.from(seen.values())
-  db.tags = [tagFresh, tagDry, tagPack]
+  db.tags = [tagFresh, tagDry, tagPack, tagOil, tagSeasoning]
   saveFallback()
 }
 
@@ -422,8 +457,9 @@ const tab = ref('status')
 const drawerOpen = ref(false)
 function switchTab(t){ tab.value = t; drawerOpen.value = false; nextTick(bindSortable) }
 
-/* ---------- 搜尋 / Chips ---------- */
+/* ---------- 搜尋 / Chips（左側：可開合） ---------- */
 const qList = ref(''); const qTag = ref(''); const qStatus = ref('')
+
 const sideSearchPlaceholder = computed(() =>
   tab.value==='manage' ? '搜尋食材…' :
   tab.value==='tags'   ? '搜尋標籤…'   :
@@ -441,6 +477,7 @@ const sideSearchModel = computed({
     else qStatus.value = v
   }
 })
+
 const listTagFilter = reactive(new Set())
 const statusTagFilter = reactive(new Set())
 function tagName(id){ return db.tags.find(t=>t.id===id)?.name ?? '（已刪除）' }
@@ -458,6 +495,14 @@ function onChipClick(id){
     qTag.value = (qTag.value === tagName(id)) ? '' : tagName(id)
   }
 }
+
+/* 左側 chips 開合邏輯 */
+const showAllChips = ref(false)
+const chipsMoreCount = computed(() => Math.max(0, (db.tags?.length || 0) - CHIP_LIMIT))
+const chipsDisplayList = computed(() => {
+  const list = db.tags || []
+  return showAllChips.value ? list : list.slice(0, CHIP_LIMIT)
+})
 
 /* ---------- 狀況設定（全門市/單店） ---------- */
 const scope = ref('global')
@@ -519,6 +564,19 @@ function setBatchStatus(s){
 const statusListRef = ref(null)
 function scrollToRow(id){
   statusListRef.value?.querySelector?.(`#row-${id}`)?.scrollIntoView({behavior:'smooth', block:'center'})
+}
+
+/* 右側每列標籤開合 */
+const expandedRowTagIds = reactive(new Set())
+function isRowExpanded(id){ return expandedRowTagIds.has(id) }
+function toggleRowExpand(id){ isRowExpanded(id) ? expandedRowTagIds.delete(id) : expandedRowTagIds.add(id) }
+function rowTagShown(it){
+  const arr = Array.isArray(it.tags) ? it.tags : []
+  return isRowExpanded(it.id) ? arr : arr.slice(0, ROW_TAG_LIMIT)
+}
+function rowTagMoreCount(it){
+  const n = Array.isArray(it.tags) ? it.tags.length : 0
+  return Math.max(0, n - ROW_TAG_LIMIT)
 }
 
 /* ---------- 食材管理 ---------- */
@@ -615,7 +673,7 @@ async function createTag(){
 }
 async function renameTag(t){
   const n = prompt('輸入新的標籤名稱：', t.name)
-  if (!n) return
+  if (n === null) return
   const name = n.trim()
   if (!name) return
   if (db.tags.some(x=>x.id!==t.id && x.name===name)) return toast('名稱重複')
@@ -636,7 +694,7 @@ function tagUsageCount(id){ return db.ingredients.filter(it => it.tags.includes(
 
 const tagListRef = ref(null)
 function bindSortable(){
-  if (!tagListRef.value) return
+  if (!tagListRef.value || tab.value!=='tags') return
   Sortable.create(tagListRef.value, {
     animation: 150, handle: '.grip', draggable: '.tag-row',
     onEnd: async () => {
@@ -724,7 +782,6 @@ function importJSON(e){
   border:1px solid var(--border);
   border-radius:12px;padding:0 10px;min-height:38px;background:var(--card-bg)
 }
-/* 讓搜尋框能無邊線搭配外層 */
 .input.bare{border:none;outline:none;background:transparent}
 .side-actions{display:flex;align-items:center;gap:8px;min-height:40px}
 .action-spacer{height:32px;flex:1}
@@ -739,6 +796,7 @@ function importJSON(e){
   border-color: var(--primary);
   color: var(--primary);
 }
+.chip.toggler{opacity:.8}
 .side-list{max-height:calc(100vh - 240px);overflow:auto;padding:10px}
 .side-item{
   display:flex;gap:10px;align-items:center;
@@ -762,7 +820,7 @@ function importJSON(e){
   border:1px solid var(--border);background:var(--card-bg);color:var(--text);
   border-radius:10px;padding:6px 10px;cursor:pointer
 }
-.segbtn.active{background:var(--primary-weak);border-color:var(--primary);color:var(--primary)}
+.segbtn.active{background:var(--primary-weak);border-color: var(--primary);color: var(--primary)}
 
 /* 狀態按鈕 */
 .state-btn{min-width:72px;border-radius:10px;border:1px solid var(--border);padding:6px 10px;background:var(--card-bg);cursor:pointer;color:var(--text)}
@@ -811,6 +869,18 @@ function importJSON(e){
 
 /* 底部工具列 */
 .bottom{max-width:1200px;margin:12px auto 0;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:12px}
+
+/* 按鈕補充色系 */
+.btn{border:1px solid var(--border);background:var(--card-bg);color:var(--primary);border-radius:10px;padding:8px 12px;cursor:pointer}
+.btn.small{padding:6px 10px;font-size:12px}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.ghost{color:var(--text)}
+.btn.warn{border-color:#f59e0b;color:#92400e;background:#fffbeb}
+.btn.danger{border-color:#ef4444;color:#991b1b;background:#fef2f2}
+
+/* 連結樣式（展開/收起） */
+.link{border:none;background:transparent;color:var(--primary);cursor:pointer}
+.tiny{font-size:11px}
 
 /* RWD */
 @media (max-width:1024px){

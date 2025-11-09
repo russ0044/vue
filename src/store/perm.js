@@ -1,12 +1,13 @@
-// 權限管理（改為：以 seedData 的 roleGroups.permissions 為單一真相）
+// src/store/perm.js
+// 權限管理（以 seedData 的 roleGroups.permissions 為單一真相）
 // - 仍支援 demo 後門：localStorage.emp-role = 'manager'、使用者名稱含「店長」
 // - 提供 API：usePerm().ensureLoaded()/reset()/reload()/can()、perms、isManager
 
 import { reactive } from 'vue'
 import * as ds from '@/store/datasource'
-import { useAuth } from '@/store/auth'
+import { useAuth, onAuthChange } from '@/store/auth'
 import { useRoleStore } from '@/store/roleStore'
-import seed from '@/seed/seedData'   // 讀取 seed 以取得 roleGroups 定義
+import seed from '@/seed/seedData' // 讀取 seed 以取得 roleGroups 定義
 
 /** 所有 UI/路由會用到的權限鍵（請與各頁 meta.requiresPerm 對齊） */
 const KEYS = [
@@ -39,14 +40,14 @@ const state = reactive({
   isManager: false,
 })
 
-/** 從 seed 做一張 roleGroupId -> permissions 的對照表 */
+/** 從 seed 做一張 roleGroupId -> permissions 的對照表（單一真相） */
 function buildRoleMapFromSeed() {
   const s = seed()
   const map = {}
   ;(s.roleGroups || []).forEach(g => {
     // 允許 seed 裡用 permissions（新欄位），也兼容舊的 perms
     const arr = g.permissions || g.perms || []
-    map[String(g.id).toLowerCase()] = Array.isArray(arr) ? arr.slice() : []
+    map[String(g.id || '').toLowerCase()] = Array.isArray(arr) ? arr.slice() : []
   })
   return map
 }
@@ -91,7 +92,7 @@ function ensureLoaded() {
     localFlag === 'manager'
   state.isManager = isManager
 
-  // 1) 先嘗試用 seed 的 roleGroupId → permissions
+  // 1) 先嘗試用 seed 的 roleGroupId → permissions（單一真相）
   let permList = ROLE_PERM_MAP[roleGroupId] || []
 
   // 2) 若沒有 roleGroupId（或對不到），則用 appRole 給一組 fallback
@@ -132,6 +133,13 @@ function can(k) {
   return !!state.perms[k]
 }
 
+/* 自動回應登入/登出：變更時重算權限（不影響現有呼叫方式） */
+onAuthChange?.(() => {
+  reset()
+  // 不主動 ensure，等 UI 第一次呼叫 can()/ensureLoaded() 時再算；
+  // 若你想即時更新，可改成 reload()
+})
+
 export function usePerm() {
   return {
     perms: state.perms,
@@ -142,3 +150,6 @@ export function usePerm() {
     can,
   }
 }
+
+// （可選）導出權限鍵，提供其它模組引用
+export const PERM_KEYS = KEYS

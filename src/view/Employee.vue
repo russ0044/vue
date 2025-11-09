@@ -162,13 +162,21 @@ perm.ensureLoaded?.() // 若有定義則呼叫
  * ========================= */
 const seedRef = ref(seed()) // 一份只讀副本
 
-// 統一資料來源顯示（與 BossShell 一致）
-const runtimeLabel = computed(() => {
-  const m = ds.getMode?.() || 'mock'
-  return m === 'firebase' ? 'Firebase' : 'Local（假資料）'
-})
+/* =========================
+ * 資料來源標籤（支持跨頁同步）
+ * ========================= */
+const dsMode = ref((ds.getMode && ds.getMode()) || localStorage.getItem('settings.datasource.mode') || 'mock')
+function onDsStorage(e){
+  if (e && e.key === 'settings.datasource.mode') {
+    const v = e.newValue
+    if (v === 'mock' || v === 'firebase') dsMode.value = v
+  }
+}
+const runtimeLabel = computed(() => dsMode.value === 'firebase' ? 'Firebase' : 'Local（假資料）')
 
-// 從 scope 或 seed 推導品牌/門市/使用者顯示用資訊（只顯示，不改 store）
+/* =========================
+ * 從 scope 或 seed 推導品牌/門市/使用者顯示用資訊（只顯示，不改 store）
+ * ========================= */
 const storeId = computed(() => {
   return scope.storeId || seedRef.value.settings?.store?.defaultStoreId || 'hn-taipei'
 })
@@ -186,7 +194,6 @@ const userName = computed(() => {
 /* =========================
  * 權限與角色顯示（店長 / 門市人員）
  * ========================= */
-// 單點權限防呆：若 perm 還沒 ready，回傳 false 避免報錯
 function can(key){
   try{
     if (typeof perm?.can === 'function') return !!perm.can(key)
@@ -195,7 +202,6 @@ function can(key){
     return false
   }
 }
-// 角色標籤安全讀取
 const roleLabel = computed(() => (perm?.isManager ? '店長' : '門市人員'))
 
 /* =========================
@@ -207,8 +213,9 @@ function updateThemeFromLocal(){
   theme.value = t === 'dark' ? 'dark' : 'light'
 }
 function onStorage(e){
+  if (!e) return
   if (e.key === 'theme') updateThemeFromLocal()
-  // 資料來源切換時 runtimeLabel 由 computed + ds.getMode 自動反映
+  onDsStorage(e) // 同步監聽資料來源切換
 }
 onMounted(() => {
   updateThemeFromLocal()
@@ -227,7 +234,7 @@ function isActive(name){ return route.name === name }
 function goNamed(name){ router.push({ name }) }
 function clickProtected(name, permissionKey){
   if (can(permissionKey)) goNamed(name)
-  // 沒權限可在這裡彈出提醒（保持靜默不導頁）
+  // 無權限：保留靜默不導頁；若要提示可在此加上 toast
 }
 const fallbackTitle = computed(() => {
   if (isActive('emp-inventory')) return '門市庫存'
@@ -246,7 +253,7 @@ function goSettings(){
 }
 
 function onLogout(){
-  logout?.()
+  try { logout?.() } catch {}
   if (router.currentRoute.value.name !== 'login'){
     router.replace({ name:'login' })
   }

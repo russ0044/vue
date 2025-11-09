@@ -4,7 +4,7 @@
 // - 連動 datasource / auth / roleStore 的變動，確保即時、正確
 // - 提供 setStore(id) 讓頁面可切換門市（含防呆）
 
-import { reactive, computed, watch } from 'vue'
+import { reactive, watch } from 'vue'
 import * as ds from '@/store/datasource'
 import { useAuth } from '@/store/auth'
 import { useRoleStore } from '@/store/roleStore'
@@ -22,10 +22,10 @@ const view = reactive({
 // 畫面要用的聚合狀態
 const state = reactive({
   brandName: '餐易管',
-  role: roleStore?.state?.role || 'Employee',   // 'Boss' | 'Employee' | 'Kitchen' | ...
-  storeId: '',                                  // 目前檢視的門市 id
-  userName: '門市人員',                           // 顯示用途
-  allowedStores: [],                             // 可見門市 id 陣列（依角色/使用者）
+  role: roleStore?.state?.role || 'Employee', // 'Boss' | 'Employee' | 'Kitchen' | ...
+  storeId: '',
+  userName: '門市人員',
+  allowedStores: [],
 })
 
 /* -------------------- 工具函式 -------------------- */
@@ -88,9 +88,8 @@ function recomputeScope(reason = '') {
 }
 
 /* -------------------- 訂閱資料來源（即時） -------------------- */
-let unSub = null
 try {
-  unSub = ds.subscribe?.((snap) => {
+  ds.subscribe?.((snap) => {
     try {
       view.stores = safeArray(snap?.stores)
       view.settings = snap?.settings || {}

@@ -72,7 +72,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/store/auth'
 import { useRoute, useRouter } from 'vue-router'
 import * as ds from '@/store/datasource'
@@ -82,12 +82,17 @@ const route = useRoute()
 const router = useRouter()
 
 function onLogout() {
-  logout()
+  try { logout?.() } catch {}
   router.replace({ name: 'login' })
 }
-function goSettings() { router.push('/settings') }
+function goSettings() {
+  if (router.hasRoute('system-settings')) router.push({ name: 'system-settings' })
+  else router.push('/settings')
+}
 
-/* 主題（與其它殼一致：讀 localStorage.theme + 切 html.dark） */
+/* =========================
+ * 主題（讀 localStorage.theme + 切 html.dark）
+ * ========================= */
 const theme = computed(() => (localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'))
 const themeLabel = computed(() => (theme.value === 'dark' ? '深色' : '淺色'))
 function applyThemeClass() {
@@ -95,14 +100,30 @@ function applyThemeClass() {
   if (theme.value === 'dark') root.classList.add('dark')
   else root.classList.remove('dark')
 }
-const onStorage = (e) => { if (e.key === 'theme') applyThemeClass() }
+
+/* =========================
+ * 資料來源顯示（mock / firebase），支援跨頁同步
+ * ========================= */
+const dsMode = ref((ds.getMode && ds.getMode()) || localStorage.getItem('settings.datasource.mode') || 'mock')
+const runtimeLabel = computed(() => (dsMode.value === 'firebase' ? 'Firebase' : 'Local（假資料）'))
+
+/* =========================
+ * 事件監聽（theme + datasource mode）
+ * ========================= */
+function onStorage(e) {
+  if (!e) return
+  if (e.key === 'theme') applyThemeClass()
+  if (e.key === 'settings.datasource.mode') {
+    const v = e.newValue
+    if (v === 'mock' || v === 'firebase') dsMode.value = v
+  }
+}
 onMounted(() => { applyThemeClass(); window.addEventListener('storage', onStorage) })
 onUnmounted(() => { window.removeEventListener('storage', onStorage) })
 
-/* 執行模式顯示（與 Boss / Emp 統一） */
-const runtimeLabel = computed(() => (ds.getMode?.() === 'firebase' ? 'Firebase' : 'Local（假資料）'))
-
-/* 動態頁面標題、active 判定 */
+/* =========================
+ * 動態頁面標題、active 判定
+ * ========================= */
 const pageTitle = computed(() => route.meta?.title || '中央廚房作業')
 const currentKey = computed(() => route.path.split('/').pop() || '')
 const isActive = (name) => currentKey.value === name

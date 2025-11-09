@@ -31,6 +31,7 @@
             placeholder="boss@hunanchicken.example"
             autocomplete="username"
             required
+            @keydown.enter="onLogin"
           />
         </label>
 
@@ -44,11 +45,15 @@
               placeholder="請輸入密碼"
               autocomplete="current-password"
               required
+              ref="pwRef"
+              @keydown.enter="onLogin"
+              @keyup="detectCaps"
             />
-            <button type="button" class="pw-toggle" @click="showPassword = !showPassword">
+            <button type="button" class="btn tiny ghost pw-toggle" @click="showPassword = !showPassword">
               {{ showPassword ? '隱藏' : '顯示' }}
             </button>
           </div>
+          <p v-if="capsOn" class="caps-hint">看起來 Caps Lock 已開啟</p>
         </label>
 
         <div class="row-between">
@@ -56,8 +61,12 @@
           <button type="button" class="link ghost" @click="onInviteJoin">使用邀請碼加入</button>
         </div>
 
-        <p v-if="errorMsg" class="msg err">{{ errorMsg }}</p>
-        <p v-if="infoMsg" class="msg info">{{ infoMsg }}</p>
+        <transition name="fade">
+          <p v-if="errorMsg" class="msg err">{{ errorMsg }}</p>
+        </transition>
+        <transition name="fade">
+          <p v-if="infoMsg" class="msg info">{{ infoMsg }}</p>
+        </transition>
 
         <div class="btn-row">
           <button type="submit" class="btn primary" :disabled="!canSubmit || loading">
@@ -84,7 +93,7 @@
                   <code>{{ u.password }}</code>
                 </div>
               </div>
-              <button class="mini" @click="fill(u.email, u.password)">一鍵貼入</button>
+              <button class="btn tiny ghost" @click="quickFill(u.email, u.password)">一鍵貼入</button>
             </li>
           </ul>
         </details>
@@ -151,6 +160,8 @@ const showPassword = ref(false)
 const errorMsg = ref('')
 const infoMsg = ref('')
 const loading = ref(false)
+const pwRef = ref(null)
+const capsOn = ref(false)
 
 const emailOk = computed(() => /\S+@\S+\.\S+/.test(email.value))
 const canSubmit = computed(() => emailOk.value && password.value.length >= 3)
@@ -161,8 +172,22 @@ function onForgot(){ infoMsg.value = '請聯繫老闆／管理者重設密碼。
 function onInviteJoin(){ infoMsg.value = '員工／中央廚房可使用「邀請碼」加入（示範）。'; setTimeout(()=>infoMsg.value='', 2600) }
 function goRegister(){ router.push('/register') }
 
-// 一鍵貼入
-function fill(e,p){ email.value=e; password.value=p; showPassword.value=false }
+// 偵測 Caps Lock
+function detectCaps(e){
+  const isLetter = (c) => c && c.length === 1 && /[a-zA-Z]/.test(c)
+  if (!isLetter(e.key)) return
+  const caps = (e.getModifierState && e.getModifierState('CapsLock')) || false
+  capsOn.value = !!caps
+}
+
+// 一鍵貼入：統一樣式 + 自動聚焦密碼
+async function quickFill(e,p){
+  email.value = e
+  password.value = p
+  showPassword.value = false
+  await nextTick()
+  pwRef.value?.focus()
+}
 
 // 登入
 async function onLogin () {
@@ -188,11 +213,7 @@ async function onLogin () {
       roleGroupId: acc.roleGroupId // 'rg-boss' | 'rg-store-manager' | ...
     }
 
-    // 注意：這裡不解構 { ok }，避免 login 不回傳值時報錯
-    // 若你的 auth.login 回傳 Promise，也可加上 await
     await Promise.resolve(login({ user }))
-
-    // 給 UI 一個角色標記（部分頁面會讀）
     setRole(acc.role)
 
     // 依角色導頁
@@ -207,16 +228,28 @@ async function onLogin () {
 
 <style scoped>
 /* 背景與卡片 */
-.login-shell{min-height:100vh;background:radial-gradient(circle at 20% 20%, #dbeafe 0%, #f8fafc 60%);display:grid;place-items:center;padding:16px;font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
-.login-card{width:min(94vw,380px);background:#fff;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 32px 80px rgba(0,0,0,.08),0 6px 20px rgba(0,0,0,.04);padding:20px 20px 16px;display:grid;gap:20px}
+.login-shell{
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 20% 20%, #dbeafe 0%, rgba(219,234,254,0) 60%),
+    #f8fafc;
+  display:grid;place-items:center;padding:16px;
+  font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif
+}
+.login-card{
+  width:min(94vw,400px);
+  background:#fff;border-radius:20px;border:1px solid #e2e8f0;
+  box-shadow:0 32px 80px rgba(0,0,0,.08),0 6px 20px rgba(0,0,0,.04);
+  padding:22px 22px 16px;display:grid;gap:20px
+}
 
 /* 標頭 */
 .card-head{display:flex;align-items:flex-start;justify-content:center}
 .app-mark{display:flex;align-items:center;gap:12px}
-.logo-circle{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2563eb 0%,#4f46e5 100%);color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px;box-shadow:0 10px 20px rgba(37,99,235,.4)}
+.logo-circle{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#2563eb 0%,#4f46e5 100%);color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px;box-shadow:0 10px 20px rgba(37,99,235,.4)}
 .logo-text{line-height:1}
 .meta{display:grid;gap:2px}
-.app-name{font-size:1rem;font-weight:700;line-height:1.2;color:#0f172a}
+.app-name{font-size:1rem;font-weight:800;line-height:1.2;color:#0f172a}
 .app-desc{font-size:.7rem;color:#64748b;line-height:1.4}
 
 /* avatar */
@@ -229,14 +262,16 @@ async function onLogin () {
 .form-area{display:grid;gap:14px}
 .field{display:grid;gap:6px}
 .label{font-size:.8rem;font-weight:600;color:#334155}
-.input{width:100%;padding:.65rem .7rem;border:1px solid #cbd5e1;border-radius:10px;font-size:.9rem;line-height:1.4;color:#0f172a;background:#fff}
+.input{width:100%;padding:.65rem .7rem;border:1px solid #cbd5e1;border-radius:10px;font-size:.9rem;line-height:1.4;color:#0f172a;background:#fff;transition:.15s border, .15s box-shadow}
 .input:focus{outline:2px solid #2563eb33;border-color:#2563eb}
 
 /* 密碼切換 */
 .pw-box{display:flex;align-items:stretch;gap:8px}
 .pw-input{flex:1}
-.pw-toggle{white-space:nowrap;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:.8rem;padding:0 .6rem;cursor:pointer}
-.pw-toggle:hover{background:#f8fafc}
+.pw-toggle{white-space:nowrap}
+
+/* CapsLock 提示 */
+.caps-hint{margin-top:6px;font-size:.72rem;color:#b45309;background:#fff7ed;border:1px solid #fed7aa;padding:6px 8px;border-radius:8px}
 
 /* 連結列 */
 .row-between{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
@@ -249,13 +284,15 @@ async function onLogin () {
 .msg.err{background:#fff1f2;border-color:#fecdd3;color:#9f1239}
 .msg.info{background:#eff6ff;border-color:#bae6fd;color:#1e3a8a}
 
-/* 按鈕群 */
+/* 按鈕群（統一按鈕系統） */
 .btn-row{display:flex;flex-wrap:wrap;gap:10px}
-.btn{flex:1;border-radius:10px;font-size:.9rem;font-weight:600;padding:.7rem 1rem;cursor:pointer;border:1px solid透明;text-align:center;box-shadow:0 10px 20px rgba(0,0,0,.07)}
+.btn{flex:1;border-radius:10px;font-size:.9rem;font-weight:700;padding:.7rem 1rem;cursor:pointer;border:1px solid transparent;text-align:center;box-shadow:0 10px 20px rgba(0,0,0,.07);transition:.15s transform,.15s box-shadow,.15s background,.15s border}
+.btn:active{transform:translateY(1px)}
 .btn.primary{background:#2563eb;border-color:#2563eb;color:#fff;box-shadow:0 14px 28px rgba(37,99,235,.35)}
 .btn.primary:disabled{background:#94a3b8;border-color:#94a3b8;box-shadow:none;cursor:not-allowed}
 .btn.ghost{background:#fff;color:#475569;border-color:#cbd5e1;box-shadow:none}
-.btn.ghost:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost:hover{border-color:#2563eb;color:#2563eb}
+.btn.tiny{flex:unset;padding:.46rem .6rem;font-size:.78rem;border-radius:8px}
 
 /* Demo 區塊 */
 .demo-hint{font-size:.7rem;line-height:1.4;color:#64748b;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:12px;padding:10px 12px}
@@ -263,8 +300,10 @@ async function onLogin () {
 .demo-list{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:8px}
 .demo-item{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:8px 10px}
 .demo-info{display:grid;gap:4px}
-.demo-cred{display:flex;gap:6px;align-items:center}
-.mini{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:8px;padding:6px 8px;cursor:pointer}
-.mini:hover{border-color:#2563eb;color:#2563eb}
+.demo-cred{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 6px}
+
+/* 動畫 */
+.fade-enter-active,.fade-leave-active{transition:opacity .18s}
+.fade-enter-from,.fade-leave-to{opacity:0}
 </style>

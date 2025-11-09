@@ -1,12 +1,11 @@
 <template>
-  <section class="inventory-page" :class="{ dark: isDark }">
+  <section class="inventory-page">
     <!-- 頁首 -->
     <header class="top-bar card">
       <div class="left">
         <div class="title-row">
           <div class="title">店面庫存</div>
 
-          <!-- 只有老闆才顯示回主頁按鈕，或你想全體顯示也可以 -->
           <button
             class="btn ghost small back-btn"
             v-if="canGoHome"
@@ -44,6 +43,7 @@
           <label class="row">
             <span class="label">排序：</span>
             <select v-model="sortBy" class="input sm">
+              <option value="no">序號</option>
               <option value="sku">SKU</option>
               <option value="name">品名</option>
               <option value="qty">數量</option>
@@ -73,6 +73,7 @@
         <table class="table">
           <thead>
             <tr>
+              <th class="num w60">序</th>
               <th>SKU</th>
               <th>品名</th>
               <th class="num">數量</th>
@@ -87,6 +88,8 @@
               v-for="i in filteredSorted"
               :key="toStr(i.storeId) + ':' + (i.sku || i.id)"
             >
+              <td class="num">{{ i._no }}</td>
+
               <td>{{ i.sku || '—' }}</td>
 
               <td class="ellipsis" :title="i.name">
@@ -113,7 +116,7 @@
             </tr>
 
             <tr v-if="filteredSorted.length === 0">
-              <td colspan="6" class="muted center">
+              <td colspan="7" class="muted center">
                 無資料
                 <span v-if="!storeId">（尚未選擇店面）</span>
                 <span v-else-if="!hasAnyInv">（此店面目前沒有庫存紀錄）</span>
@@ -123,12 +126,6 @@
         </table>
       </template>
     </main>
-
-    <!-- Toast (例如日後要做提醒可以用)
-    <transition name="fade">
-      <div v-if="toast" class="toast">{{ toast }}</div>
-    </transition>
-    -->
   </section>
 </template>
 
@@ -139,51 +136,21 @@ import { useScope } from '@/store/scope'
 
 defineOptions({ name: 'InventoryViewUnified' })
 
-/*
-  🔗 三端統一資料來源：
-  datasource.read() / datasource.subscribe() 會回傳一個全域資料物件 view：
-  {
-    runtime: { mode:'local'|'firebase', theme:'light'|'dark', ... },
-    stores: [ {id:'hn-taipei', name:'海南雞 台北店'}, ... ],
-    inventory: [ {storeId:'hn-taipei', sku:'CK-001', name:'去骨雞腿', qty:22, unit:'份', exp:'2025-11-06'}, ... ],
-    thresholds: [ {storeId:'hn-taipei', minQty:6}, ... ],
-    settings: {
-      store:{ allowNegativeStock:false, defaultStoreId:'hn-taipei', defaultExpDays:3 }
-    },
-    users: [...],
-    ...
-  }
-
-  ✅ firebase / local 的切換邏輯已經在 datasource 裡面，這裡不需要再多一組 select。
-*/
+/* ========= 與全域 datasource 對齊 ========= */
 const view = reactive(ds.read() || {})
 let unsub = null
 const loading = ref(true)
 
-/*
-  👤 權限來源：
-  我們假設 useScope() 會回傳目前登入使用者的資訊，像：
-  {
-    userId: 'U101',
-    role: 'staff' | 'boss' | 'kitchen',
-    storeId: 'hn-taipei', // 對 staff/kitchen 代表他所屬的店
-    allowedStores: ['hn-taipei','hn-kaohsiung'] // 可選，看你要不要實作
-  }
-*/
+/* ========= 權限來源 ========= */
 const scope = useScope()
 
-/* ------------------- UI 本地狀態 ------------------- */
-const storeId = ref('')        // 目前畫面選的店
+/* ========= 本地 UI 狀態 ========= */
+const storeId = ref('')
 const q = ref('')
-const sortBy = ref('name')
+const sortBy = ref('no')  // 預設顯示序號
 const asc = ref(true)
 
-// 主題同步
-const isDark = ref(
-  (localStorage.getItem('theme') || 'auto') === 'dark'
-)
-
-/* ------------------- 初始化容器，避免 undefined crash ------------------- */
+/* ========= 初始化容器，避免 undefined crash ========= */
 function ensureContainers() {
   view.runtime      ||= { mode: 'local', theme: 'light' }
   view.stores       ||= []
@@ -197,97 +164,61 @@ function ensureContainers() {
   }
 }
 
-/* ------------------- 權限：哪些店可以選？ -------------------
-   - boss: 全部店 (view.stores)
-   - kitchen/staff: 限制在自己 storeId 或 allowedStores
-*/
+/* ========= 可選店面（Boss: 全部；其他：allowedStores 或自己的 store） ========= */
 const accessibleStores = computed(() => {
   const all = view.stores || []
-  if (scope.role === 'boss') {
-    return all
-  }
+  if (String(scope.role || '').toLowerCase() === 'boss') return all
 
-  // staff / kitchen
-  // 如果有 allowedStores，取交集；否則只拿 scope.storeId
   const allowed = Array.isArray(scope.allowedStores) && scope.allowedStores.length
-    ? scope.allowedStores
-    : [scope.storeId]
+    ? scope.allowedStores.map(toStr)
+    : [toStr(scope.storeId)]
 
-  return all.filter(s => allowed.includes(String(s.id)))
+  return all.filter(s => allowed.includes(toStr(s.id)))
 })
 
-/* 是否能顯示「返回主頁」按鈕 */
-const canGoHome = computed(() => scope.role === 'boss')
+/* 是否顯示「返回主頁」 */
+const canGoHome = computed(() => String(scope.role || '').toLowerCase() === 'boss')
 
-/* ------------------- 初始化預設店面 ------------------- */
+/* ========= 預設店面選擇 ========= */
 function initDefaultStoreId() {
-  // 已選店不合法 → 重挑
   const validIds = new Set(accessibleStores.value.map(s => toStr(s.id)))
   if (!storeId.value || !validIds.has(storeId.value)) {
-    // 嘗試用系統預設店面，但要在使用者可看範圍內
     const sysDefault = toStr(view.settings?.store?.defaultStoreId)
-    if (sysDefault && validIds.has(sysDefault)) {
-      storeId.value = sysDefault
-      return
-    }
-
-    // 嘗試用使用者自己的門市
+    if (sysDefault && validIds.has(sysDefault)) { storeId.value = sysDefault; return }
     const mine = toStr(scope.storeId)
-    if (mine && validIds.has(mine)) {
-      storeId.value = mine
-      return
-    }
-
-    // fallback: accessibleStores 第一家
+    if (mine && validIds.has(mine)) { storeId.value = mine; return }
     storeId.value = toStr(accessibleStores.value?.[0]?.id || '')
   }
 }
 
-/* 如果資料或權限店面清單變動，就重新校正 storeId */
 watch(
   () => [accessibleStores.value.map(s => toStr(s.id)).join(','), view.settings?.store?.defaultStoreId],
   () => initDefaultStoreId(),
   { immediate: true }
 )
 
-/* ------------------- 訂閱資料源 ------------------- */
+/* ========= 訂閱資料源 ========= */
 onMounted(() => {
   ensureContainers()
 
   unsub = ds.subscribe?.((snap) => {
     Object.assign(view, snap || {})
     ensureContainers()
-
-    // 同步 dark / light 顯示
-    isDark.value =
-      (view.runtime?.theme || localStorage.getItem('theme') || 'light') === 'dark'
-
     initDefaultStoreId()
-
     loading.value = false
   })
 
   // 首次也跑一次
-  isDark.value =
-    (view.runtime?.theme || localStorage.getItem('theme') || 'light') === 'dark'
   initDefaultStoreId()
   loading.value = false
-
-  // 幫 <html> 加 dark class，讓全局類似 Tailwind dark: 風格也可用
-  if (isDark.value) {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-  }
 })
 
 onBeforeUnmount(() => {
   unsub?.()
 })
 
-/* ------------------- computed：字典、清單、排序 ------------------- */
+/* ========= computed：門檻字典 / 是否有任何庫存 / 過濾+排序 ========= */
 const thDict = computed(() => {
-  // { 'hn-taipei': {minQty:6}, ... }
   return Object.fromEntries(
     (view.thresholds || []).map(t => [toStr(t.storeId ?? t.id), t])
   )
@@ -297,12 +228,12 @@ const hasAnyInv = computed(() =>
   (view.inventory || []).some(i => toStr(i.storeId) === storeId.value)
 )
 
+/** 重要：先過濾，再標上序號 _no，再依使用者選擇排序 */
 const filteredSorted = computed(() => {
   const list = (view.inventory || []).filter(
     i => toStr(i.storeId) === storeId.value
   )
 
-  // 搜尋
   const keyword = q.value.trim().toLowerCase()
   const filtered = !keyword
     ? list
@@ -311,27 +242,22 @@ const filteredSorted = computed(() => {
         String(i.sku  || '').toLowerCase().includes(keyword)
       )
 
-  // 排序
+  // 依目前篩選結果標上序號（1-based）
+  const withNo = filtered.map((it, idx) => ({ ...it, _no: idx + 1 }))
+
   const s = sortBy.value
   const mul = asc.value ? 1 : -1
-  return [...filtered].sort((a, b) => {
-    if (s === 'qty') {
-      return (safeNum(a.qty) - safeNum(b.qty)) * mul
-    }
-    if (s === 'exp') {
-      return (toDateMs(a.exp) - toDateMs(b.exp)) * mul
-    }
-    if (s === 'sku') {
-      return String(a.sku || '').localeCompare(String(b.sku || '')) * mul
-    }
-    // default name
+  return [...withNo].sort((a, b) => {
+    if (s === 'no')  return (a._no - b._no) * mul
+    if (s === 'qty') return (safeNum(a.qty) - safeNum(b.qty)) * mul
+    if (s === 'exp') return (toDateMs(a.exp) - toDateMs(b.exp)) * mul
+    if (s === 'sku') return String(a.sku || '').localeCompare(String(b.sku || '')) * mul
     return String(a.name || '').localeCompare(String(b.name || '')) * mul
   })
 })
 
-/* ------------------- 樣式 / 文字顯示邏輯 ------------------- */
+/* ========= 顯示邏輯 ========= */
 function stateText(i) {
-  // 安全門檻 = thresholds[storeId].minQty > item.low > 0
   const rule = thDict.value[toStr(i.storeId)]
   const low =
     Number.isFinite(+rule?.minQty) ? +rule.minQty
@@ -343,21 +269,19 @@ function stateText(i) {
   if (isNearDue(i)) return '將到期'
   return 'OK'
 }
-
 function badge(i) {
   const s = stateText(i)
   if (s === 'OK') return 'badge-ok'
   if (s === '將到期') return 'badge-warn'
   return 'badge-danger'
 }
-
 function qtyClass(i) {
   const allowNeg = !!view.settings?.store?.allowNegativeStock
   if (!allowNeg && safeNum(i.qty) < 0) return 'qty-bad'
   return ''
 }
 
-/* 時效 / 效期 */
+/* ========= 效期 ========= */
 function toDateMs(v) {
   if (!v) return Number.POSITIVE_INFINITY
   const ms = Date.parse(v)
@@ -392,63 +316,27 @@ function expClass(i) {
   return ''
 }
 
-/* 其他 utils */
+/* ========= 其他 utils ========= */
 function toStr(v){ return v == null ? '' : String(v) }
 function safeNum(v){ const n = Number(v); return Number.isFinite(n) ? n : 0 }
 
 function goHome(){
-  // 這裡保留你原本的容錯 push
   try {
-    // 你專案的 router 可能是存在 window 方便同頁整合
+    // 若你的 router 放在全域（例如為了跨頁 demo）
     // eslint-disable-next-line no-eval
     const r = (eval('window.__app_router__')) || null
     if (r?.push) { r.push('/'); return }
   } catch {}
   if (location.hash !== '#/') location.hash = '#/'
 }
-
-/* 顯示目前資料來源模式（local / firebase） */
-const currentModeLabel = computed(() => {
-  const m = view.runtime?.mode || 'local'
-  return m === 'firebase' ? 'Firebase' : 'Local（假資料）'
-})
 </script>
 
 <style scoped>
-/* 主色系 / 狀態色用 CSS 變數，主題切換時只要換 root 或加上 .dark 覆寫 */
-:root{
-  --bg:#f6f8fc;
-  --card:#fff;
-  --border:#e6eaf2;
-  --text:#0f172a;
-  --muted:#64748b;
-  --thead-bg:#f1f5f9;
-  --thead-text:#1f2937;
-  --hover-bg:#f9fafb;
-
-  --status-ok:#16a34a;
-  --status-warn:#ca8a04;
-  --status-danger:#dc2626;
-}
-
-.dark{
-  --bg:#0f172a;
-  --card:#1e293b;
-  --border:#334155;
-  --text:#e2e8f0;
-  --muted:#94a3b8;
-  --thead-bg:#1e293b;
-  --thead-text:#f1f5f9;
-  --hover-bg:#273549;
-
-  --status-ok:#4ade80;
-  --status-warn:#eab308;
-  --status-danger:#f87171;
-}
-
+/* ===== 這支樣式全面使用「全域主題變數」 =====
+   由外層 .emp-shell / .emp-shell.dark 控制： */
 .inventory-page{
-  background:var(--bg);
-  color:var(--text);
+  background:var(--bg-page);
+  color:var(--text-main);
   min-height:100vh;
   padding:16px;
   box-sizing:border-box;
@@ -460,7 +348,7 @@ const currentModeLabel = computed(() => {
 
 /* 卡片通用 */
 .card{
-  background:var(--card);
+  background:var(--bg-card);
   border:1px solid var(--border);
   border-radius:16px;
   box-shadow:0 8px 24px rgba(0,0,0,.04);
@@ -474,140 +362,67 @@ const currentModeLabel = computed(() => {
   align-items:flex-start;
   gap:12px;
 }
-.left{
-  min-width:0;
-}
+.left{ min-width:0; }
 .title-row{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:8px;
-  margin-bottom:8px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px;
 }
 .title{
-  font-size:20px;
-  font-weight:700;
-  line-height:1.3;
-  color:var(--text);
+  font-size:20px; font-weight:700; line-height:1.3; color:var(--text-main);
 }
-.back-btn{
-  margin-left:auto;
-}
+.back-btn{ margin-left:auto; }
 
 .toolbar{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  align-items:center;
+  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
 }
 .label{
-  font-size:13px;
-  line-height:1.2;
-  color:var(--muted);
-  white-space:nowrap;
-}
-
-/* 右上資訊塊 */
-.right-info{
-  display:flex;
-  flex-wrap:wrap;
-  gap:12px;
-  min-width:max-content;
-}
-.hint-block{
-  min-width:max-content;
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:10px;
-  box-shadow:0 4px 12px rgba(0,0,0,.03);
-  padding:8px 10px;
-}
-.hint-label{
-  font-size:11px;
-  line-height:1.2;
-  color:var(--muted);
-  margin-bottom:4px;
-}
-.hint-value{
-  font-size:14px;
-  font-weight:600;
-  line-height:1.2;
-  color:var(--text);
+  font-size:13px; line-height:1.2; color:var(--text-sub); white-space:nowrap;
 }
 
 .spacer{ flex:1 }
 
 /* 表格卡片 */
-.table-card{
-  padding:16px;
-}
-.loading-block{
-  padding:24px;
-  text-align:center;
-  font-size:14px;
-}
+.table-card{ padding:16px; }
+.loading-block{ padding:24px; text-align:center; font-size:14px; }
 
 /* 輸入元件 / 按鈕 */
-.row{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  flex-wrap:wrap;
-}
+.row{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .input{
   padding:6px 10px;
   border-radius:10px;
   border:1px solid var(--border);
-  background:var(--card);
-  color:var(--text);
-  font-size:14px;
-  line-height:1.2;
-  outline:none;
+  background:var(--bg-card);
+  color:var(--text-main);
+  font-size:14px; line-height:1.2; outline:none;
 }
-.input.sm{
-  padding:6px 8px;
-  font-size:13px;
-}
+.input.sm{ padding:6px 8px; font-size:13px; }
 .input:focus{
   border-color:#9ec5ff;
   box-shadow:0 0 0 3px rgba(99,162,255,.15);
 }
-.grow{
-  flex:1;
-  min-width:140px;
-}
+.grow{ flex:1; min-width:140px; }
 
 .btn{
   border:1px solid var(--border);
-  background:var(--card);
+  background:var(--bg-card);
   color:#2563eb;
   border-radius:10px;
   padding:8px 12px;
   cursor:pointer;
-  font-size:14px;
-  line-height:1.2;
-  white-space:nowrap;
+  font-size:14px; line-height:1.2; white-space:nowrap;
 }
 .btn.ghost{
-  background:var(--card);
-  color:#334155;
+  background:var(--bg-card);
+  color:var(--text-main);
   border-color:var(--border);
 }
-.btn.small{
-  padding:6px 10px;
-  font-size:13px;
-}
+.btn.small{ padding:6px 10px; font-size:13px; }
 
 /* 表格 */
-.table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:15px;
-}
+.table{ width:100%; border-collapse:collapse; font-size:15px; }
 .table thead th{
   text-align:left;
-  background:var(--thead-bg);
-  color:var(--thead-text);
+  background:var(--table-head-bg, var(--bg-top, #f1f5f9));
+  color:var(--table-head-text, var(--text-main));
   font-weight:600;
   padding:10px 12px;
   border-bottom:1px solid var(--border);
@@ -617,96 +432,35 @@ const currentModeLabel = computed(() => {
   padding:10px 12px;
   border-bottom:1px solid var(--border);
   vertical-align:top;
-  font-size:14px;
-  line-height:1.4;
-  color:var(--text);
+  font-size:14px; line-height:1.4; color:var(--text-main);
 }
 .table tbody tr:hover td{
-  background:var(--hover-bg);
+  background:linear-gradient(to bottom, rgba(0,0,0,.02), transparent);
 }
-.num{
-  text-align:right;
-}
+.num{ text-align:right; }
+.w60{ width:60px; }
 
 /* 狀態 Badge / 數量 / 效期文字 */
-.badge-ok{
-  color:var(--status-ok);
-  font-weight:600;
-}
-.badge-warn{
-  color:var(--status-warn);
-  font-weight:600;
-}
-.badge-danger{
-  color:var(--status-danger);
-  font-weight:600;
-}
+.badge-ok{ color:#16a34a; font-weight:600; }
+.badge-warn{ color:#ca8a04; font-weight:600; }
+.badge-danger{ color:#dc2626; font-weight:600; }
 
-.txt-warn{
-  color:var(--status-warn);
-}
-.txt-danger{
-  color:var(--status-danger);
-}
-.qty-bad{
-  color:var(--status-danger);
-  font-weight:700;
-}
+.txt-warn{ color:#ca8a04; }
+.txt-danger{ color:#dc2626; }
+.qty-bad{ color:#dc2626; font-weight:700; }
 
-.center{
-  text-align:center;
-}
-.muted{
-  color:var(--muted);
-  font-size:14px;
-}
+.center{ text-align:center; }
+.muted{ color:var(--text-sub); font-size:14px; }
 
 .ellipsis{
-  white-space:nowrap;
-  text-overflow:ellipsis;
-  overflow:hidden;
-  max-width:240px;
-}
-
-/* Toast 預留（目前沒用） */
-.toast{
-  position:fixed;
-  right:16px;
-  bottom:16px;
-  background:#111827;
-  color:#fff;
-  padding:10px 12px;
-  border-radius:10px;
-  opacity:.95;
-  font-size:13px;
-  line-height:1.3;
-  z-index:70;
+  white-space:nowrap; text-overflow:ellipsis; overflow:hidden; max-width:240px;
 }
 
 @media (max-width:768px){
-  .title-row{
-    width:100%;
-    justify-content:space-between;
-  }
-  .right-info{
-    width:100%;
-    flex-direction:row;
-    justify-content:flex-start;
-  }
-  .toolbar{
-    flex-direction:column;
-    align-items:stretch;
-  }
-  .row{
-    width:100%;
-    justify-content:space-between;
-  }
-  .grow{
-    width:100%;
-    flex:none;
-  }
-  .ellipsis{
-    max-width:140px;
-  }
+  .title-row{ width:100%; justify-content:space-between; }
+  .toolbar{ flex-direction:column; align-items:stretch; }
+  .row{ width:100%; justify-content:space-between; }
+  .grow{ width:100%; flex:none; }
+  .ellipsis{ max-width:140px; }
 }
 </style>

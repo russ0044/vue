@@ -1,3 +1,4 @@
+<!-- src/view/boss/BossInvite.vue -->
 <template>
   <section class="inv-page">
     <!-- 頁首 -->
@@ -239,9 +240,10 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import * as ds from '@/store/datasource'       // ★ 直接接到 seedData / firebase
 import {
-  listStores, listPresets, createPresetService,
+  listPresets, createPresetService,
   listInvites, createInvite, updateInvite, deleteInvite,
   bulkCreateInvites, exportAll, importAll,
   genCodeService, todayStr
@@ -249,7 +251,7 @@ import {
 
 defineOptions({ name:'BossInvite' })
 
-/* 權限 & 角色 */
+/* 權限 & 角色（與系統對齊） */
 const PERMS = [
   { key:'inventory.view',  name:'庫存：查看' },
   { key:'inventory.edit',  name:'庫存：編輯' },
@@ -266,8 +268,41 @@ const ROLES = [
   { id:'custom',   name:'自訂' },
 ]
 
-/* 狀態 */
-const stores  = ref([])
+/* -------- 門市：由 datasource 統一提供（seedData / firebase 皆可） -------- */
+const view = reactive(ds.read() || {})   // 直接讀快照
+let unsub = null
+function ensureContainers(){
+  view.stores ||= []
+  view.settings ||= {}
+}
+ensureContainers()
+onMounted(() => {
+  unsub = ds.subscribe?.((snap) => {
+    Object.assign(view, snap || {})
+    ensureContainers()
+    syncStoresFromView()
+  })
+  syncStoresFromView()
+})
+onBeforeUnmount(() => unsub?.())
+
+const stores = ref([])
+/** 將 datasource 的 stores 轉成本元件使用的精簡陣列（id/name） */
+function syncStoresFromView(){
+  const arr = Array.isArray(view.stores) ? view.stores : []
+  stores.value = arr.map(s => ({ id: String(s.id), name: s.name }))
+  // 若 firebase 端暫無資料，保底不為空（不影響功能）
+  if (stores.value.length === 0) {
+    stores.value = [
+      { id:'hn-taipei',       name:'海南雞 台北店' },
+      { id:'hn-taichung',     name:'海南雞 台中店' },
+      { id:'hn-kaohsiung',    name:'海南雞 高雄店' },
+      { id:'central-kitchen', name:'海南雞 中央廚房' },
+    ]
+  }
+}
+
+/* -------- 模板、邀請碼：交由 inviteService（支援 mock / firebase） -------- */
 const presets = ref([])
 const codes   = ref([])
 
@@ -290,14 +325,14 @@ const newPresetName = ref('')
 const batchQty = ref(5)
 
 const inviteLink = computed(()=>{
-  const origin = location?.origin || ''
+  const origin = (typeof location !== 'undefined' && location.origin) ? location.origin : ''
   return `${origin}/signup?code=${encodeURIComponent(editing.code || '')}`
 })
 
 onMounted(async ()=>{
-  stores.value  = await listStores()
-  presets.value = await listPresets()
-  codes.value   = await listInvites()
+  // 從 service 取（firebase / local 由 service 決定）
+  try { presets.value = await listPresets() } catch { presets.value = [] }
+  try { codes.value   = await listInvites() } catch { codes.value = [] }
   createNew()
 })
 

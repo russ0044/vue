@@ -8,14 +8,16 @@ import { seedData } from '@/seed/seedData'
 const db = reactive(JSON.parse(JSON.stringify(seedData || {})))
 
 // 確保主要欄位存在（先用 seed，缺的再補）
-db.runtime    ||= { mode: localStorage.getItem('mode') || 'local', theme: localStorage.getItem('theme') || 'light' }
+db.runtime     ||= { mode: localStorage.getItem('mode') || 'local', theme: localStorage.getItem('theme') || 'light' }
 db.storeGroups ||= {}     // { [storeId]: ['rg-boss','rg-staff'] }
-db.stores     ||= []
-db.inventory  ||= []
-db.thresholds ||= []
-db.settings   ||= { store: { allowNegativeStock:false, defaultStoreId:'', defaultExpDays:3 } }
-db.users      ||= []
-db.invites    ||= []
+db.stores      ||= []
+db.inventory   ||= []
+db.thresholds  ||= []
+db.settings    ||= { store: { allowNegativeStock:false, defaultStoreId:'', defaultExpDays:3 } }
+db.users       ||= []
+db.invites     ||= []
+db.products    ||= []     // ingredients 對應
+db.tags        ||= []     // 額外補齊：供 upsertTag / deleteTag 使用
 
 /** 建立預設 roleGroups（小寫 id），並把 seedData 的 perms 轉成 permissions */
 function buildDefaultRoleGroupsFromSeed() {
@@ -127,6 +129,18 @@ export function subscribe(cb) {
 /** 手動觸發更新（若外部修改） */
 export function refresh() {
   notifyAll()
+}
+
+/** 取得目前資料來源模式（供 UI 顯示） */
+export function getMode() {
+  // local 假資料固定回傳 'mock'
+  return 'mock'
+}
+
+/** 供入口在 setMode('mock') 時呼叫（保留擴充點，目前為 no-op） */
+export async function init() {
+  // 假資料模式本身已在模組載入時完成 hydrate，這裡直接回傳
+  return true
 }
 
 /* ------------------ 店面 CRUD ------------------ */
@@ -281,6 +295,47 @@ export function setThreshold(storeId, minQty) {
   notifyAll()
 }
 
+/* ------------------ Ingredients（對應 products）/ Tags ------------------ */
+// upsertIngredient：以產品 id 為 key，存在則覆蓋，不在則新增
+export function upsertIngredient(payload) {
+  // payload: { id, name, unit, safeStock, cat, vendorIds }
+  if (!payload || !payload.id) return
+  const i = db.products.findIndex(p => p.id === payload.id)
+  const next = {
+    id: payload.id,
+    name: payload.name ?? '',
+    unit: payload.unit ?? '',
+    safeStock: Number.isFinite(+payload.safeStock) ? +payload.safeStock : 0,
+    cat: payload.cat ?? '',
+    vendorIds: Array.isArray(payload.vendorIds) ? [...payload.vendorIds] : [],
+  }
+  if (i >= 0) db.products[i] = { ...db.products[i], ...next }
+  else db.products.push(next)
+  notifyAll()
+}
+
+export function deleteIngredient(id) {
+  db.products = db.products.filter(p => p.id !== id)
+  notifyAll()
+}
+
+// tags 結構自訂為：{ id: 'tag-***', name: '調味', color?: '#...' }
+export function upsertTag(payload) {
+  if (!payload) return
+  let id = payload.id || ('tag-' + Math.random().toString(36).slice(2, 8))
+  const i = db.tags.findIndex(t => t.id === id)
+  const next = { id, name: payload.name || '未命名', color: payload.color || '' }
+  if (i >= 0) db.tags[i] = { ...db.tags[i], ...next }
+  else db.tags.push(next)
+  notifyAll()
+  return id
+}
+
+export function deleteTag(id) {
+  db.tags = db.tags.filter(t => t.id !== id)
+  notifyAll()
+}
+
 /* ------------------ 模式 / 主題切換 ------------------ */
 export function setMode(mode) {
   db.runtime.mode = mode
@@ -304,6 +359,8 @@ export default {
   read,
   subscribe,
   refresh,
+  getMode,
+  init,
   addStore,
   renameStore,
   deleteStore,
@@ -320,6 +377,12 @@ export default {
   upsertInventory,
   deleteInventory,
   setThreshold,
+  // ingredients / tags
+  upsertIngredient,
+  deleteIngredient,
+  upsertTag,
+  deleteTag,
+  // runtime
   setMode,
   setTheme,
 }

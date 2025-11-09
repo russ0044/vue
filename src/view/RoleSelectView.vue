@@ -1,7 +1,6 @@
 <template>
   <div class="role-select-container">
     <div class="role-select-box">
-    
       <h2>請選擇您的角色</h2>
 
       <div class="buttons">
@@ -10,7 +9,7 @@
       </div>
 
       <div class="back">
-        <button class="back-button" @click="goBack">◀</button>
+        <button class="back-button" @click="goBack" title="返回登入">◀</button>
       </div>
     </div>
   </div>
@@ -23,9 +22,9 @@ const router = useRouter()
 
 const selectRole = (role) => {
   if (role === 'boss') {
-    router.push('/boss') 
+    router.push('/boss')
   } else if (role === 'staff') {
-    router.push('/employee') 
+    router.push('/employee')
   }
 }
 
@@ -40,30 +39,27 @@ const goBack = () => {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background-color: #e0efff;
+  background: var(--bg, #e0efff);
+  color: var(--text, #1e293b);
+  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
 }
 
 .role-select-box {
-  background-color: #ffffff;
+  background: var(--card-bg, #fff);
   padding: 2rem;
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   width: 320px;
   text-align: center;
   position: relative;
-}
-
-.system-title {
-  font-size: 28px;
-  font-weight: bold;
-  color: #0077cc;
-  margin-bottom: 1rem;
+  border: 1px solid var(--border, #e5e7eb);
 }
 
 h2 {
   margin-bottom: 1.5rem;
-  font-size: 18px;
-  color: #333;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text, #1e293b);
 }
 
 .buttons {
@@ -78,31 +74,40 @@ h2 {
   border-radius: 8px;
   font-size: 16px;
   cursor: pointer;
-  color: white;
-  transition: background-color 0.3s;
+  font-weight: 500;
+  color: #fff;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .role-button:hover {
-  opacity: 0.9;
+  transform: translateY(-2px);
+  opacity: 0.95;
 }
 
 .boss {
-  background-color: #d5340fff;
+  background-color: #dc2626; /* 紅色系 */
 }
 
 .staff {
-  background-color: #28a745;
+  background-color: #16a34a; /* 綠色系 */
 }
 
- .back { 
-    position: absolute; 
-    bottom: rem; 
-    left: 0.5rem; } 
+.back {
+  position: absolute;
+  bottom: 1rem;
+  left: 0.5rem;
+}
 
 .back-button {
-  background: none;
+  background: transparent;
   border: none;
   font-size: 20px;
+  color: var(--muted, #64748b);
   cursor: pointer;
+  transition: color 0.2s;
+}
+.back-button:hover {
+  color: var(--text, #1e293b);
 }
 </style>

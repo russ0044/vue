@@ -25,6 +25,7 @@
               v-model.trim="email"
               class="input"
               placeholder="boss@example.com"
+              :disabled="loading"
               required
             >
             <small class="hint" v-if="email && !emailOk">請輸入有效的 Email。</small>
@@ -38,9 +39,10 @@
                 v-model.trim="password"
                 class="input pw-input"
                 placeholder="至少 8 碼，需含大小寫與數字"
+                :disabled="loading"
                 required
               >
-              <button type="button" class="pw-toggle" @click="showPw = !showPw">
+              <button type="button" class="pw-toggle" @click="showPw = !showPw" :disabled="loading">
                 {{ showPw ? '隱藏' : '顯示' }}
               </button>
             </div>
@@ -61,6 +63,7 @@
               v-model.trim="brandName"
               class="input"
               placeholder="例如：湖南雞專賣 / 小林炸物"
+              :disabled="loading"
               required
             >
           </label>
@@ -71,6 +74,8 @@
               v-model.trim="brandPhone"
               class="input"
               placeholder="02-12345678 / 0912-345-678"
+              :pattern="phonePattern"
+              :disabled="loading"
               required
             >
           </label>
@@ -93,6 +98,7 @@
               v-model.trim="storeName"
               class="input"
               placeholder="例如：台北門市 / 中央廚房 A"
+              :disabled="loading"
               required
             >
           </label>
@@ -103,6 +109,8 @@
               v-model.trim="storePhone"
               class="input"
               placeholder="02-00000000"
+              :pattern="phonePattern"
+              :disabled="loading"
               required
             >
           </label>
@@ -113,13 +121,14 @@
               v-model.trim="storeAddr"
               class="input"
               placeholder="台北市內湖區成功路一段 123 號"
+              :disabled="loading"
               required
             >
           </label>
 
           <label class="field">
             <span class="label">據點類型</span>
-            <select v-model="storeType" class="input">
+            <select v-model="storeType" class="input" :disabled="loading">
               <option value="branch">門市</option>
               <option value="central">中央廚房</option>
             </select>
@@ -137,6 +146,7 @@
                   class="radio"
                   value="single"
                   v-model="businessMode"
+                  :disabled="loading"
                 >
                 <span>單一據點營運（只有這家門市，暫時沒有中央廚房）</span>
               </label>
@@ -147,6 +157,7 @@
                   class="radio"
                   value="multi"
                   v-model="businessMode"
+                  :disabled="loading"
                 >
                 <span>多據點 / 含中央廚房（之後會有多家門市領貨）</span>
               </label>
@@ -198,7 +209,6 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/store/auth'
 import { useRoleStore } from '@/store/roleStore'
-// ✅ 改這行：用命名空間方式匯入整個 datasource
 import * as ds from '@/store/datasource'
 
 // router / stores
@@ -217,7 +227,7 @@ const brandPhone = ref('')
 const storeName = ref('')
 const storeAddr = ref('')
 const storePhone = ref('')
-const storeType = ref('branch')   // 'branch' | 'central'
+const storeType = ref('branch')    // 'branch' | 'central'
 const businessMode = ref('single') // 'single' | 'multi'
 
 // UI 狀態
@@ -233,6 +243,9 @@ const baseOk  = computed(() =>
 )
 const canSubmit = computed(() => emailOk.value && pwOk.value && baseOk.value)
 
+// 電話欄位（簡易）pattern
+const phonePattern = String.raw`^(\+?\d{1,3}[-\s]?)?(\d{2,4}[-\s]?\d{3,4}[-\s]?\d{3,4}|\d{9,10})$`
+
 // 導回登入
 function goLogin() {
   router.push('/login')
@@ -247,39 +260,47 @@ async function onSubmit() {
     return
   }
 
-  // 1) 檢查 email 是否已存在（datasource 本地/遠端會各自處理）
-  if (ds.emailExists?.(email.value)) {
-    msg.value = '此 Email 已被使用，請改用其他信箱'
-    return
-  }
-
   try {
     loading.value = true
 
-    // 2) 新增老闆帳號
-    ds.addUser?.({
+    // 1) 檢查 email 是否已存在（同步或非同步都支援）
+    const exists = await Promise.resolve(ds.emailExists?.(email.value))
+    if (exists) {
+      msg.value = '此 Email 已被使用，請改用其他信箱'
+      return
+    }
+
+    // 2) 新增老闆帳號（roleGroupId 用新制小寫較穩定；你的 local 實作也有相容舊 RG-BOSS 的轉換）
+    await Promise.resolve(ds.addUser?.({
       email: email.value,
       name: brandName.value,
       phone: brandPhone.value,
-      roleGroupId: 'RG-BOSS',
+      roleGroupId: 'rg-boss', // ✅ 直接用新小寫
       role: 'Boss',
-    })
+    }))
 
-    // 3) 建立第一個據點
-    ds.addStore?.({
+    // 3) 建立第一個據點，取得 id
+    const newStoreId = await Promise.resolve(ds.addStore?.({
       name: storeName.value,
       address: storeAddr.value,
       phone: storePhone.value,
       type: storeType.value,
-    })
+    }))
 
-    // 4) 設為預設據點
-    const snapshotAfter = ds.read?.() || {}
-    const lastStore = (snapshotAfter.stores || [])[snapshotAfter.stores.length - 1]
-    if (lastStore?.id) ds.setDefaultStore?.(lastStore.id)
+    // 4) 設為預設據點（保險：有回傳 id 才設）
+    if (newStoreId) await Promise.resolve(ds.setDefaultStore?.(newStoreId))
 
     // 5) 自動登入並進入後台
-    login({ name: brandName.value, role: 'Boss', email: email.value })
+    // ✅ 正確帶入 user 物件，避免 auth.user 為 null
+    login({
+      user: {
+        name: brandName.value,
+        email: email.value,
+        // 若後端有回傳 userId / storeId 可一併帶上
+        storeId: newStoreId || undefined,
+      },
+      role: 'Boss',
+    })
     setRole('Boss')
 
     ok.value = true

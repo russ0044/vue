@@ -1,7 +1,8 @@
+<!-- src/view/boss/BossInventory.vue -->
 <template>
   <section class="inventory-container">
     <div class="header">
-      <h2 class="section-title">店面庫存</h2>
+      <h2 class="section-title">店面庫存（老闆）</h2>
       <button class="btn ghost" @click="goHome" title="返回主頁">返回主頁</button>
     </div>
 
@@ -18,6 +19,7 @@
       <label class="row">
         <span>排序：</span>
         <select v-model="sortBy" class="input">
+          <option value="id">序號</option>
           <option value="sku">SKU</option>
           <option value="name">品名</option>
           <option value="qty">數量</option>
@@ -36,6 +38,7 @@
         <table class="table">
           <thead>
             <tr>
+              <th class="num">#</th>
               <th>SKU</th>
               <th>品名</th>
               <th class="num">數量</th>
@@ -45,16 +48,23 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="i in filteredSorted" :key="toStr(i.storeId) + ':' + (i.sku || i.id)">
+            <tr
+              v-for="(i, idx) in filteredSorted"
+              :key="toStr(i.storeId) + ':' + (i.sku || i.id)"
+            >
+              <td class="num">{{ idx + 1 }}</td>
               <td>{{ i.sku || '—' }}</td>
               <td class="ellipsis" :title="i.name">{{ i.name || '—' }}</td>
-              <td class="num"><span :class="qtyClass(i)">{{ safeNum(i.qty) }}</span></td>
+              <td class="num">
+                <span :class="qtyClass(i)">{{ safeNum(i.qty) }}</span>
+              </td>
               <td>{{ i.unit || '-' }}</td>
               <td><span :class="expClass(i)">{{ expLabel(i) }}</span></td>
               <td><span :class="badge(i)">{{ stateText(i) }}</span></td>
             </tr>
+
             <tr v-if="filteredSorted.length === 0">
-              <td colspan="6" class="muted center">
+              <td colspan="7" class="muted center">
                 無資料
                 <span v-if="!storeId">（尚未選擇店面）</span>
                 <span v-else-if="!hasAnyInv">（此店面目前沒有庫存紀錄）</span>
@@ -71,7 +81,7 @@
 import { reactive, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as ds from '@/store/datasource'
 
-defineOptions({ name: 'EmpInventory' })
+defineOptions({ name: 'BossInventory' })
 
 /* ---------------- state from datasource ---------------- */
 const view = reactive(ds.read() || {})
@@ -86,12 +96,44 @@ function ensureContainers() {
   view.settings.store ||= { allowNegativeStock: false, defaultStoreId: '', defaultExpDays: 3 }
 }
 
+/* 若無資料則生成最小假資料（在 datasource.mode==='mock' 時會用到） */
+function seedIfEmpty() {
+  if (!Array.isArray(view.stores) || view.stores.length === 0) {
+    view.stores = [
+      { id: 'hn-taipei', name: '海南雞 台北店' },
+      { id: 'hn-taichung', name: '海南雞 台中店' },
+      { id: 'hn-kaohsiung', name: '海南雞 高雄店' },
+    ]
+  }
+  if (!Array.isArray(view.thresholds) || view.thresholds.length === 0) {
+    view.thresholds = [
+      { id: 'hn-taipei', storeId: 'hn-taipei', minQty: 6 },
+      { id: 'hn-taichung', storeId: 'hn-taichung', minQty: 6 },
+      { id: 'hn-kaohsiung', storeId: 'hn-kaohsiung', minQty: 6 },
+    ]
+  }
+  if (!Array.isArray(view.inventory) || view.inventory.length === 0) {
+    const today = new Date()
+    const fmt = (d) => d.toISOString().slice(0, 10)
+    const addDays = (n) => { const t = new Date(today); t.setDate(t.getDate() + n); return fmt(t) }
+    view.inventory = [
+      { id: 'I1', storeId: 'hn-taipei',   sku: 'CK-001', name: '去骨雞腿（熟）', qty: 22, unit: '份', exp: addDays(3) },
+      { id: 'I2', storeId: 'hn-taipei',   sku: 'RI-030', name: '泰國香米',       qty: 45, unit: '公斤', exp: null },
+      { id: 'I3', storeId: 'hn-taichung', sku: 'CK-002', name: '去骨雞胸（熟）', qty:  8, unit: '份', exp: addDays(2) },
+      { id: 'I4', storeId: 'hn-kaohsiung',sku: 'CU-092', name: '小黃瓜',         qty: 15, unit: '條', exp: addDays(1) },
+    ]
+  }
+}
+
 ensureContainers()
+seedIfEmpty()
 
 onMounted(() => {
   unsub = ds.subscribe?.((snap) => {
     Object.assign(view, snap || {})
     ensureContainers()
+    // 若切換到 firebase 沒有相對應集合，畫面仍不會爆掉
+    seedIfEmpty()
     initDefaultStore()
     loading.value = false
   })
@@ -103,10 +145,10 @@ onBeforeUnmount(() => unsub?.())
 /* ---------------- local UI state ---------------- */
 const storeId = ref('')
 const q = ref('')
-const sortBy = ref('name')
+const sortBy = ref('id')   // 預設用「序號」排序
 const asc = ref(true)
 
-function initDefaultStore(){
+function initDefaultStore() {
   const ids = new Set((view.stores || []).map(s => toStr(s.id)))
   const current = storeId.value
   if (!current || !ids.has(current)) {
@@ -142,6 +184,7 @@ const filteredSorted = computed(() => {
   const s = sortBy.value
   const mul = asc.value ? 1 : -1
   return [...filtered].sort((a, b) => {
+    if (s === 'id')  return String(a.id).localeCompare(String(b.id)) * mul
     if (s === 'qty') return (safeNum(a.qty) - safeNum(b.qty)) * mul
     if (s === 'exp') return (toDateMs(a.exp) - toDateMs(b.exp)) * mul
     if (s === 'sku') return String(a.sku || '').localeCompare(String(b.sku || '')) * mul
@@ -238,6 +281,7 @@ function goHome(){
   align-items: center;
   margin-bottom: 12px;
 }
+.row{display:flex;align-items:center;gap:6px}
 
 .input {
   padding: 6px 10px;

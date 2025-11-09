@@ -142,10 +142,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRoleStore } from '@/store/roleStore'
 import { setMode } from '@/store/datasource'
+import * as ds from '@/store/datasource'
 
 /* -------------------------------------------------
    狀態：主題 / 資料來源 / 偏好
@@ -153,7 +154,20 @@ import { setMode } from '@/store/datasource'
 const storedTheme = localStorage.getItem('theme') || 'auto'
 const theme = ref(storedTheme)
 
-const mode = ref(localStorage.getItem('ds-mode') || 'mock')
+// 初始化資料來源模式：優先 datasource.getMode() → localStorage → 'mock'
+function initialDsMode() {
+  try {
+    const fromModule = ds?.getMode?.()
+    if (fromModule === 'mock' || fromModule === 'firebase') return fromModule
+  } catch {}
+  try {
+    const fromLs = localStorage.getItem('settings.datasource.mode')
+    if (fromLs === 'mock' || fromLs === 'firebase') return fromLs
+  } catch {}
+  return 'mock'
+}
+const mode = ref(initialDsMode())
+
 const cfg = ref(localStorage.getItem('firebase-config') || '')
 
 const lang = ref(localStorage.getItem('pref-lang') || 'zh-TW')
@@ -164,15 +178,27 @@ const notifyDelivery = ref(localStorage.getItem('pref-notify-delivery') === '1')
 const router = useRouter()
 const { state: roleState } = useRoleStore()
 
+onMounted(() => {
+  // 若外部切換了 mode，也讓本頁跟著反映（例如在別頁切換）
+  window.addEventListener('storage', e => {
+    if (e.key === 'settings.datasource.mode') {
+      const v = e.newValue
+      if (v === 'mock' || v === 'firebase') mode.value = v
+    }
+    if (e.key === 'theme') {
+      theme.value = e.newValue || 'auto'
+    }
+  })
+})
+
 /* -------------------------------------------------
-   主題套用（改為全域統一版本）
+   主題套用（全域一致）
 ------------------------------------------------- */
 function applyTheme() {
-  // 使用 main.js 提供的全域方法
+  // 優先使用全域方法（若 main.js 註冊了）
   if (window.setTheme) {
     window.setTheme(theme.value)
   } else {
-    // 保險機制：若全域函式不存在，則自行切換
     const shouldDark =
       theme.value === 'dark' ||
       (theme.value === 'auto' &&
@@ -180,7 +206,6 @@ function applyTheme() {
     document.documentElement.classList.toggle('dark', !!shouldDark)
     localStorage.setItem('theme', theme.value)
   }
-  // 可改為更好的提示方式
   alert(`已套用主題模式：${theme.value === 'auto' ? '自動' : theme.value}`)
 }
 
@@ -196,26 +221,64 @@ function savePrefs() {
 }
 
 /* -------------------------------------------------
+   共用：嘗試初始化資料源（若模組有提供）
+------------------------------------------------- */
+async function tryInitDatasource(nextMode) {
+  try {
+    if (ds?.setMode && typeof ds.setMode === 'function') {
+      ds.setMode(nextMode)
+    }
+    if (ds?.init && typeof ds.init === 'function') {
+      await ds.init({ mode: nextMode })
+    } else if (ds?.ensureInit && typeof ds.ensureInit === 'function') {
+      await ds.ensureInit({ mode: nextMode })
+    } else if (ds?.boot && typeof ds.boot === 'function') {
+      await ds.boot({ mode: nextMode })
+    }
+  } catch {
+    // 失敗也不阻斷頁面
+  }
+}
+
+/* -------------------------------------------------
    資料來源切換
 ------------------------------------------------- */
 async function saveFirebase() {
   try {
     const obj = JSON.parse(cfg.value)
+    if (!obj || typeof obj !== 'object') throw new Error('bad json')
+    // 最少驗證
+    if (!obj.apiKey || !obj.projectId) {
+      alert('請至少提供 apiKey 與 projectId')
+      return
+    }
     localStorage.setItem('firebase-config', JSON.stringify(obj))
+    // 若 datasource 提供設定 config 的介面，嘗試寫入
+    try { ds?.setFirebaseConfig?.(obj) } catch {}
+
+    // 統一使用設定鍵：settings.datasource.mode
+    localStorage.setItem('settings.datasource.mode', 'firebase')
+
+    // 嘗試初始化並切換
     await setMode('firebase')
-    localStorage.setItem('ds-mode', 'firebase')
+    await tryInitDatasource('firebase')
+
     mode.value = 'firebase'
-    alert('已切換為 Firebase 模式，請重新整理頁面以生效')
+    alert('已切換為 Firebase 模式。部分資料需重新讀取，如未自動更新請手動重新整理。')
   } catch {
     alert('JSON 解析失敗，請檢查格式')
   }
 }
 
 async function switchToMock() {
+  // 先更新 localStorage 觸發跨分頁同步
+  localStorage.setItem('settings.datasource.mode', 'mock')
+
   await setMode('mock')
-  localStorage.setItem('ds-mode', 'mock')
+  await tryInitDatasource('mock')
+
   mode.value = 'mock'
-  alert('已切換為假資料模式（seedData）')
+  alert('已切換為假資料模式（seedData）。')
 }
 
 /* -------------------------------------------------
@@ -229,7 +292,6 @@ function goHome() {
   router.replace({ name: 'login' })
 }
 </script>
-
 
 <style scoped>
 /* 版面骨架 */

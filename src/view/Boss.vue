@@ -143,9 +143,9 @@ const scope = useScope()
 
 /* --------------------- 主題顯示 --------------------- */
 const themeMode = ref(localStorage.getItem('theme') || 'light')
-function handleStorage(e) { if (e.key === 'theme') themeMode.value = e.newValue || 'light' }
-onMounted(() => window.addEventListener('storage', handleStorage))
-onBeforeUnmount(() => window.removeEventListener('storage', handleStorage))
+function handleThemeStorage(e) { if (e && e.key === 'theme') themeMode.value = e.newValue || 'light' }
+onMounted(() => window.addEventListener('storage', handleThemeStorage))
+onBeforeUnmount(() => window.removeEventListener('storage', handleThemeStorage))
 
 const themeLabel = computed(() => {
   const mode = themeMode.value
@@ -158,57 +158,72 @@ const themeLabel = computed(() => {
 })
 
 /* --------------------- 資料來源顯示（mock / firebase） --------------------- */
+const dsMode = ref((ds.getMode && ds.getMode()) || 'mock')
+function handleDsStorage(e) {
+  if (!e) return
+  if (e.key === 'settings.datasource.mode') {
+    const nv = e.newValue
+    if (nv === 'mock' || nv === 'firebase') dsMode.value = nv
+  }
+}
+onMounted(() => window.addEventListener('storage', handleDsStorage))
+onBeforeUnmount(() => window.removeEventListener('storage', handleDsStorage))
+
 const dataSourceLabel = computed(() => {
-  const m = ds.getMode?.() || 'mock'
+  const m = dsMode.value
   return m === 'firebase' ? 'Firebase（雲端）' : 'Local（假資料）'
 })
 
 /* --------------------- 角色 / 標籤 --------------------- */
 const roleLabel = computed(() => {
-  const r = roleState.role || 'Employee'
+  const r = roleState?.role || 'Employee'
   if (r === 'Boss') return '老闆'
   if (r === 'Kitchen') return '中央廚房人員'
-  // Employee：可能是店長或一般員工，這邊用 scope.userName 區分語感
-  return scope.userName.includes('店長') ? '店長' : '門市人員'
+  const name = scope?.userName || ''
+  return name.includes('店長') ? '店長' : '門市人員'
 })
 
 /* --------------------- 導航 --------------------- */
-const currentKey = computed(() => route.path.split('/').pop() || '')
+/**
+ * 讓 active 判斷更健壯：
+ * - 支援 /boss/ingredients/... 子路徑
+ * - 僅比對 /boss/<name> 開頭
+ */
+function isActive(name) {
+  const p = route.path || ''
+  return p.startsWith(`/boss/${name}`)
+}
 function go(name) { router.push(`/boss/${name}`) }
-function isActive(name) { return currentKey.value === name }
 
 const currentPageTitle = computed(() => {
-  return (
-    route.meta?.title ||
-    {
-      inventory: '檢視店面庫存',
-      ingredients: '食材資料',
-      rolegroups: '群組權限',
-      stores: '店面管理',
-      thresholds: '警示門檻',
-      'order-settings': '訂單設定',
-      invite: '生成邀請碼',
-      reports: '報表中心'
-    }[currentKey.value] ||
-    '管理後台'
-  )
+  if (route.meta?.title) return route.meta.title
+  const p = route.path || ''
+  if (p.startsWith('/boss/inventory')) return '檢視店面庫存'
+  if (p.startsWith('/boss/ingredients')) return '食材資料'
+  if (p.startsWith('/boss/rolegroups')) return '群組權限'
+  if (p.startsWith('/boss/stores')) return '店面管理'
+  if (p.startsWith('/boss/thresholds')) return '警示門檻'
+  if (p.startsWith('/boss/order-settings')) return '訂單設定'
+  if (p.startsWith('/boss/invite')) return '生成邀請碼'
+  if (p.startsWith('/boss/reports')) return '報表中心'
+  return '管理後台'
 })
 
 /* --------------------- 功能按鈕 --------------------- */
 function goSettings() {
-  if (router.hasRoute('system-settings')) router.push({ name: 'system-settings' })
+  if (router.hasRoute && router.hasRoute('system-settings')) router.push({ name: 'system-settings' })
   else router.push('/settings')
 }
 function onLogout() {
-  logout()
+  try { logout?.() } catch {}
   router.push({ name: 'login' })
 }
 
 /* --------------------- 對模板輸出（來自 useScope） --------------------- */
-const brandName = computed(() => scope.brandName)
-const storeId   = computed(() => scope.storeId)
-const storeName = computed(() => scope.storeName)
-const userName  = computed(() => scope.userName)
+const brandName = computed(() => scope?.brandName || '餐易管')
+const storeId   = computed(() => String(scope?.storeId || '—'))
+const storeName = computed(() => scope?.storeName || '—')
+const userName  = computed(() => scope?.userName || '—')
 </script>
 
 <style scoped>

@@ -84,7 +84,25 @@ function initial() {
     { storeId: 'CK', minQty: 10 },
   ]
 
-  return { roleGroups, stores, storeGroups, settings, inventory, thresholds }
+  // 產品（供 upsertIngredient / deleteIngredient 使用）
+  const products = [
+    { id: 'CK-001', name: '新鮮雞腿', unit: '份', safeStock: 20, cat: '肉品', vendorIds: [] },
+    { id: 'VE-010', name: '高麗菜',   unit: '顆', safeStock: 10, cat: '蔬菜', vendorIds: [] },
+  ]
+  // 標籤（供 upsertTag / deleteTag 使用）
+  const tags = [
+    { id: 'tag-basic', name: '基本', color: '' },
+  ]
+
+  // 使用者 / 邀請（供 auth/註冊流程測試）
+  const users = [
+    { id: 'U001', name: '測試老闆', email: 'boss@example.com', phone: '', roleGroupId: roleGroups[0].id, storeId: 'S1' },
+  ]
+  const invites = [
+    // { code:'JOIN-XXXX', roleGroupId: roleGroups[2].id, storeId:'S2', createdAt:'2025-01-01', expiresAt:null, used:false }
+  ]
+
+  return { roleGroups, stores, storeGroups, settings, inventory, thresholds, products, tags, users, invites }
 }
 
 /* ---------- 載入或初始化 + 舊資料遷移 ---------- */
@@ -95,16 +113,20 @@ function load() {
       const obj = JSON.parse(raw)
 
       // 安全補欄位（避免舊資料結構缺少）
-      obj.roleGroups ||= []
-      obj.stores ||= []
-      obj.storeGroups ||= {}
-      obj.settings ||= {}
-      obj.settings.store ||= { defaultStoreId: obj.stores[0]?.id || 'S1', allowNegativeStock: false, defaultExpDays: 3 }
-      obj.settings.i18n ||= { locale: 'zh-TW', timezone: 'tw-taipei' }
-      obj.settings.theme ||= { mode: localStorage.getItem('theme') || 'light' }
+      obj.roleGroups   ||= []
+      obj.stores       ||= []
+      obj.storeGroups  ||= {}
+      obj.settings     ||= {}
+      obj.settings.store      ||= { defaultStoreId: obj.stores[0]?.id || 'S1', allowNegativeStock: false, defaultExpDays: 3 }
+      obj.settings.i18n       ||= { locale: 'zh-TW', timezone: 'tw-taipei' }
+      obj.settings.theme      ||= { mode: localStorage.getItem('theme') || 'light' }
       obj.settings.datasource ||= { mode: localStorage.getItem('mode') || 'mock' }
-      obj.inventory ||= []
-      obj.thresholds ||= []
+      obj.inventory    ||= []
+      obj.thresholds   ||= []
+      obj.products     ||= []
+      obj.tags         ||= []
+      obj.users        ||= []
+      obj.invites      ||= []
 
       // 若完全沒門市，補初始資料
       if (!obj.stores.length) {
@@ -136,11 +158,10 @@ function persistAndNotify() {
   }
 }
 
-/* ---------- 對外 API ---------- */
+/* ---------- 對外 API（通用） ---------- */
 export function read() {
   return JSON.parse(JSON.stringify(state))
 }
-
 export function subscribe(cb) {
   function onStorage(e) {
     if (e.key === LS_KEY && e.newValue) {
@@ -163,9 +184,17 @@ export function subscribe(cb) {
     try { ch?.close?.() } catch {}
   }
 }
-
 export function newId() {
   return crypto?.randomUUID?.() ?? 'id-' + Math.random().toString(36).slice(2, 10)
+}
+
+/* 供入口與 UI 顯示資料來源 */
+export function getMode() {
+  return 'mock'
+}
+/* 供 index 切換模式後可呼叫，這裡為 no-op */
+export async function init() {
+  return true
 }
 
 /* ===== 角色群組 ===== */
@@ -228,7 +257,7 @@ export function deleteStore(id) {
     state.settings.store.defaultStoreId = state.stores[0]?.id || ''
   }
   // 清除相關資料
-  state.inventory = state.inventory.filter(i => i.storeId !== id)
+  state.inventory  = state.inventory.filter(i => i.storeId !== id)
   state.thresholds = state.thresholds.filter(t => (t.storeId || t.id) !== id)
   persistAndNotify()
 }
@@ -237,6 +266,37 @@ export function setDefaultStore(id) {
   state.settings.store ||= {}
   state.settings.store.defaultStoreId = id || state.stores[0]?.id || ''
   persistAndNotify()
+}
+
+/* ===== 使用者 / 邀請 ===== */
+export function emailExists(email) {
+  const target = String(email || '').toLowerCase()
+  return state.users.some(u => String(u.email || '').toLowerCase() === target)
+}
+export function addUser(user) {
+  const id = newId()
+  state.users.push({
+    id,
+    name: user?.name || '未命名使用者',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    roleGroupId: user?.roleGroupId || (state.roleGroups[2]?.id || ''), // 預設給工讀生權限
+    storeId: user?.storeId || state.settings?.store?.defaultStoreId || '',
+  })
+  persistAndNotify()
+  return id
+}
+export function verifyInvite(code) {
+  const inv = (state.invites || []).find(v => v.code === code)
+  if (!inv) return { ok: false, reason: 'not_found' }
+  if (inv.used) return { ok: false, reason: 'used' }
+  const now = Date.now()
+  if (inv.expiresAt && inv.expiresAt < now) return { ok: false, reason: 'expired' }
+  return { ok: true, roleGroupId: inv.roleGroupId, storeId: inv.storeId, expiresAt: inv.expiresAt }
+}
+export function markInviteUsed(code) {
+  const inv = (state.invites || []).find(v => v.code === code)
+  if (inv) { inv.used = true; persistAndNotify() }
 }
 
 /* ===== 庫存 / 門檻（Emp / Boss 報表等會用） ===== */
@@ -256,6 +316,42 @@ export function setThreshold(storeId, minQty) {
   const t = state.thresholds.find(x => x.storeId === storeId)
   if (t) t.minQty = minQty
   else state.thresholds.push({ storeId, minQty })
+  persistAndNotify()
+}
+
+/* ===== Ingredients（對應 products）/ Tags ===== */
+export function upsertIngredient(payload) {
+  // payload: { id, name, unit, safeStock, cat, vendorIds }
+  if (!payload || !payload.id) return
+  const i = state.products.findIndex(p => p.id === payload.id)
+  const next = {
+    id: payload.id,
+    name: payload.name ?? '',
+    unit: payload.unit ?? '',
+    safeStock: Number.isFinite(+payload.safeStock) ? +payload.safeStock : 0,
+    cat: payload.cat ?? '',
+    vendorIds: Array.isArray(payload.vendorIds) ? [...payload.vendorIds] : [],
+  }
+  if (i >= 0) state.products[i] = { ...state.products[i], ...next }
+  else state.products.push(next)
+  persistAndNotify()
+}
+export function deleteIngredient(id) {
+  state.products = state.products.filter(p => p.id !== id)
+  persistAndNotify()
+}
+export function upsertTag(payload) {
+  if (!payload) return
+  let id = payload.id || ('tag-' + Math.random().toString(36).slice(2, 8))
+  const i = state.tags.findIndex(t => t.id === id)
+  const next = { id, name: payload.name || '未命名', color: payload.color || '' }
+  if (i >= 0) state.tags[i] = { ...state.tags[i], ...next }
+  else state.tags.push(next)
+  persistAndNotify()
+  return id
+}
+export function deleteTag(id) {
+  state.tags = state.tags.filter(t => t.id !== id)
   persistAndNotify()
 }
 
@@ -285,6 +381,9 @@ export default {
   read,
   subscribe,
   newId,
+  // 顯示/初始化
+  getMode,
+  init,
   // 角色群組
   upsertRoleGroup,
   renameRole,
@@ -297,10 +396,20 @@ export default {
   renameStore,
   deleteStore,
   setDefaultStore,
+  // 使用者 / 邀請
+  emailExists,
+  addUser,
+  verifyInvite,
+  markInviteUsed,
   // 庫存 / 門檻
   upsertInventory,
   deleteInventory,
   setThreshold,
+  // ingredients / tags
+  upsertIngredient,
+  deleteIngredient,
+  upsertTag,
+  deleteTag,
   // 模式 / 主題
   setMode,
   setTheme,
