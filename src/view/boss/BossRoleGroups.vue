@@ -72,17 +72,29 @@
             v-for="g in filteredRoleGroups"
             :key="g.id"
             class="item"
-            :class="{selected: g.id===selectedRoleId}"
+            :class="[{selected: g.id===selectedRoleId}, isProtectedRole(g) && 'locked']"
             :data-id="g.id"
             @click="selectRole(g.id)"
           >
             <div class="item-title">
-              <span class="grip" title="拖曳排序" aria-hidden="true">⠿</span>{{ g.name }}
+              <span class="grip" title="拖曳排序" aria-hidden="true">⠿</span>
+              <span>{{ g.name }}</span>
+              <span v-if="isProtectedRole(g)" class="lock-pill">已保護</span>
             </div>
             <div class="muted small">{{ renderPerms(g.permissions) }}</div>
             <div class="row-actions">
-              <button class="link small" @click.stop="renameRolePrompt(g)">重新命名</button>
-              <button class="link danger small" @click.stop="removeRole(g.id, g.name)">刪除</button>
+              <button
+                class="link small"
+                :disabled="!canEditRole(g.id)"
+                :title="!canEditRole(g.id)? '此群組受保護，無法重新命名' : '重新命名'"
+                @click.stop="canEditRole(g.id) && renameRolePrompt(g)"
+              >重新命名</button>
+              <button
+                class="link danger small"
+                :disabled="!canEditRole(g.id)"
+                :title="!canEditRole(g.id)? '此群組受保護，無法刪除' : '刪除'"
+                @click.stop="canEditRole(g.id) && removeRole(g.id, g.name)"
+              >刪除</button>
             </div>
           </div>
         </div>
@@ -143,24 +155,39 @@
         </div>
 
         <div v-if="showEditor" class="editor">
+          <div
+            v-if="!canEditSelected"
+            class="locked-banner"
+            role="note"
+          >
+            🔒 此群組受保護（避免誤刪或自我降權），無法編輯／刪除／改名。
+          </div>
+
           <div class="row">
             <label class="label">群組名稱</label>
             <input
               class="input grow"
               v-model.trim="editing.name"
+              :disabled="!canEditSelected"
               placeholder="請輸入群組名稱"
               @keydown.enter.prevent="trySaveRole()"
             />
-            <button v-if="editing.name" class="icon-btn" title="清空" @click="editing.name=''">✕</button>
+            <button
+              v-if="editing.name"
+              class="icon-btn"
+              :disabled="!canEditSelected"
+              title="清空"
+              @click="canEditSelected && (editing.name='')"
+            >✕</button>
           </div>
 
           <div class="perm-toolbar">
-            <input v-model.trim="permQuery" class="input grow" placeholder="搜尋權限…" />
+            <input v-model.trim="permQuery" class="input grow" :disabled="!canEditSelected" placeholder="搜尋權限…" />
             <label class="chk">
-              <input type="checkbox" v-model="permCheckedOnly" /> 只顯示已勾選
+              <input type="checkbox" v-model="permCheckedOnly" :disabled="!canEditSelected" /> 只顯示已勾選
             </label>
-            <button class="btn" @click="selectAllFiltered">依目前篩選全選</button>
-            <button class="btn ghost" @click="clearAllFiltered">清空</button>
+            <button class="btn" :disabled="!canEditSelected" @click="selectAllFiltered">依目前篩選全選</button>
+            <button class="btn ghost" :disabled="!canEditSelected" @click="clearAllFiltered">清空</button>
           </div>
 
           <div
@@ -178,7 +205,7 @@
             <transition name="fade">
               <div v-show="openCats[cat]" class="perm-grid">
                 <label v-for="p in items" :key="p" class="perm">
-                  <input type="checkbox" :value="p" v-model="editing.permissions" />
+                  <input type="checkbox" :value="p" v-model="editing.permissions" :disabled="!canEditSelected" />
                   <span>{{ p }}</span>
                 </label>
               </div>
@@ -186,7 +213,7 @@
           </div>
 
           <div class="actions">
-            <button class="btn primary" :disabled="!canSave" @click="trySaveRole()">儲存</button>
+            <button class="btn primary" :disabled="!canSave || !canEditSelected" @click="trySaveRole()">儲存</button>
             <button class="btn ghost" @click="cancelEdit()">取消</button>
           </div>
         </div>
@@ -213,7 +240,12 @@
                 :data-id="id"
               >
                 <span class="grip" title="拖曳排序">⠿</span>{{ roleNameById(id) }}
-                <button class="x" @click="pullRole(id)" title="移除">✕</button>
+                <button
+                  class="x"
+                  :disabled="!canAssignRole(id)"
+                  :title="!canAssignRole(id) ? '受保護群組或自身所屬群組，不可移除' : '移除'"
+                  @click="canAssignRole(id) && pullRole(id)"
+                >✕</button>
               </div>
               <p v-if="!(view.storeGroups?.[selectedStoreId]||[]).length" class="muted">
                 尚未套用任何群組
@@ -228,10 +260,15 @@
                 v-for="g in view.roleGroups"
                 :key="g.id"
                 class="dock-btn"
-                :class="{'active': (view.storeGroups?.[selectedStoreId] || []).includes(g.id)}"
+                :class="{
+                  'active': (view.storeGroups?.[selectedStoreId] || []).includes(g.id),
+                  'disabled': !canAssignRole(g.id)
+                }"
+                :disabled="!canAssignRole(g.id)"
+                :title="!canAssignRole(g.id) ? '受保護群組或自身所屬群組，不可指派/解除' : '點擊切換指派'"
                 @click="toggleAssign(g)"
               >
-                {{ g.name }}
+                {{ g.name }} <span v-if="isProtectedRole(g)" class="tiny muted">（保護）</span>
               </button>
             </div>
           </div>
@@ -256,11 +293,10 @@
 
 <script setup>
 /**
- * 完整可執行版本：
- * - 修正所有未宣告的狀態 / 計算屬性
- * - 整合全域主題（light/dark/auto）自動同步
- * - 角色群組 CRUD、拖曳排序、門市套用群組、複製設定
- * - 資料來源由 datasource 統一管理（mock / firebase）
+ * 加入「受保護群組」機制：
+ * - 自動判斷名稱（老闆/Boss/Owner/超級管理…）、settings.roles.protectedIds、群組.protected 為保護
+ * - 以及：目前登入者所屬群組一律視為保護（避免自我降權）
+ * - 受保護群組：不可改名／刪除／編輯權限／指派或解除
  */
 import { reactive, ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import Sortable from 'sortablejs'
@@ -305,6 +341,8 @@ const view = reactive(ds.read() || {})
 view.storeGroups ||= {}
 view.roleGroups  ||= []
 view.stores      ||= []
+view.settings    ||= {}
+view.auth        ||= {}  // 期待 datasource 提供 auth（userId, displayName, roleGroupIds 等）
 
 let unsubscribe = null
 onMounted(() => {
@@ -314,14 +352,24 @@ onMounted(() => {
     view.storeGroups ||= {}
     view.roleGroups  ||= []
     view.stores      ||= []
+    view.settings    ||= {}
+    view.auth        ||= {}
   })
 })
 onBeforeUnmount(() => unsubscribe?.())
+
+/* 目前使用者資訊（假設 datasource.expose auth.user / roleGroupIds） */
+const me = computed(() => ({
+  id: view?.auth?.user?.id || '',
+  name: view?.auth?.user?.name || '',
+  roleGroupIds: Array.isArray(view?.auth?.user?.roleGroupIds) ? view.auth.user.roleGroupIds : []
+}))
 
 /* 從 settings 推導 */
 const safeSettings = computed(() => ({
   defaultStoreId: view?.settings?.store?.defaultStoreId ?? (view?.stores?.[0]?.id || ''),
   datasourceMode: view?.settings?.datasource?.mode ?? (localStorage.getItem('ds-mode') || 'mock'),
+  protectedRoleIds: Array.isArray(view?.settings?.roles?.protectedIds) ? view.settings.roles.protectedIds : []
 }))
 const dataSourceMode = computed(() => safeSettings.value.datasourceMode)
 
@@ -376,8 +424,37 @@ const filteredPermByCategory = computed(() => {
   return result
 })
 
-/* ==================== 派生清單 ==================== */
+/* ==================== 保護群組：規則與判斷 ==================== */
 const roleMap = computed(() => new Map((view.roleGroups||[]).map(g => [g.id, g])))
+
+function looksLikeOwnerName(name=''){
+  return /^(老闆|Boss|Owner|超級管理|系統擁有者)/i.test(String(name||''))
+}
+function isProtectedRole(g){
+  if (!g) return false
+  // 1) 群組自身標記
+  if (g.protected) return true
+  // 2) 設定指定
+  if (safeSettings.value.protectedRoleIds.includes(g.id)) return true
+  // 3) 名稱特徵
+  if (looksLikeOwnerName(g.name)) return true
+  // 4) 目前使用者所屬群組（避免自我降權）
+  if (me.value.roleGroupIds.includes(g.id)) return true
+  return false
+}
+const isProtectedRoleById = (id)=> isProtectedRole(roleMap.value.get(id))
+
+function canEditRole(id){
+  const g = roleMap.value.get(id)
+  return !!g && !isProtectedRole(g)
+}
+const canEditSelected = computed(() => editing.id ? canEditRole(editing.id) : true)
+function canAssignRole(id){
+  // 指派/解除到門市：同樣禁止保護群組與使用者自身群組
+  return !!id && !isProtectedRoleById(id)
+}
+
+/* ==================== 派生清單 ==================== */
 const filteredRoleGroups = computed(() => {
   const q = qRole.value.trim()
   const list = Array.isArray(view.roleGroups) ? view.roleGroups : []
@@ -464,6 +541,7 @@ function isDuplicateRoleName(name, selfId){
 
 /* ==================== 角色群組 CRUD ==================== */
 async function trySaveRole(){
+  if (!canEditSelected.value) return toast('此群組受保護，無法編輯')
   if (!editing.name.trim()) return toast('請輸入群組名稱')
   if ((editing.permissions?.length||0)===0) return toast('請至少勾選一個權限')
   if (isDuplicateRoleName(editing.name.trim(), editing.id)) return toast('已存在相同名稱的群組')
@@ -478,6 +556,7 @@ async function trySaveRole(){
   toast('已儲存群組')
 }
 function renameRolePrompt(g){
+  if (!canEditRole(g.id)) { toast('此群組受保護，無法重新命名'); return }
   const n = prompt('請輸入新的群組名稱：', g.name)
   if (!n) return
   const name = n.trim()
@@ -488,6 +567,7 @@ function renameRolePrompt(g){
   toast('已更名')
 }
 async function removeRole(id, name){
+  if (!canEditRole(id)) { toast('此群組受保護，無法刪除'); return }
   if (!confirm(`確定刪除「${name}」？\n將一併自所有門市移除此群組。`)) return
   await ds.deleteRoleGroup?.(id)
   // 從所有門市移除並持久化，確保資料一致
@@ -510,6 +590,7 @@ async function removeRole(id, name){
 /* 權限工具 */
 function toggleCat(cat){ openCats[cat] = !openCats[cat] }
 function selectAllFiltered(){
+  if (!canEditSelected.value) return
   const q = permQuery.value.trim()
   const add = []
   for (const items of Object.values(PERM_CATEGORIES)) {
@@ -522,6 +603,7 @@ function selectAllFiltered(){
   editing.permissions = Array.from(set)
 }
 function clearAllFiltered(){
+  if (!canEditSelected.value) return
   const q = permQuery.value.trim()
   const remove = new Set()
   for (const items of Object.values(PERM_CATEGORIES)) {
@@ -545,11 +627,13 @@ function cancelEdit(){
 function selectStore(id){ selectedStoreId.value = id }
 function toggleAssign(g){
   if (!selectedStoreId.value) return toast('請先選擇門市')
+  if (!canAssignRole(g.id)) { toast('此群組受保護或為自身群組，無法指派/解除'); return }
   const sg = view.storeGroups ||= {}
   const arr = sg[selectedStoreId.value] || (sg[selectedStoreId.value] = [])
   const i = arr.indexOf(g.id); i>=0 ? arr.splice(i,1) : arr.push(g.id)
 }
 function pullRole(id){
+  if (!canAssignRole(id)) { toast('此群組受保護或為自身群組，無法移除'); return }
   const arr = view.storeGroups?.[selectedStoreId.value] || []
   view.storeGroups[selectedStoreId.value] = arr.filter(x=>x!==id)
 }
@@ -591,9 +675,7 @@ onMounted(() => {
             .map(el => el.dataset.id).filter(Boolean)
           const map = new Map((view.roleGroups||[]).map(g => [g.id, g]))
           const newList = idsInDom.map(id => map.get(id)).filter(Boolean)
-          // 把搜尋過濾藏起來的補回尾端
           ;(view.roleGroups||[]).forEach(g => { if (!idsInDom.includes(g.id)) newList.push(g) })
-          // 依序 upsert 以維持順序（資料層可選擇寫入 index 欄位）
           for (const g of newList) await ds.upsertRoleGroup?.(g)
           toast('已更新群組排序')
         }
@@ -609,7 +691,9 @@ onMounted(() => {
           const idsInDom = Array.from(appliedRef.value.querySelectorAll('.tag'))
             .map(el => el.dataset.id).filter(Boolean)
           if (selectedStoreId.value) {
-            view.storeGroups[selectedStoreId.value] = idsInDom
+            // 排序不允許把保護群組移除，這裡僅寫入順序
+            const valid = idsInDom
+            view.storeGroups[selectedStoreId.value] = valid
             await persistStoreGroups()
           }
         }
@@ -643,6 +727,7 @@ function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
   --muted:#64748b;
   --chip-bg:#fff;
   --chip-on:#eef2ff;
+  --lock:#475569;
 }
 .dark{
   --bg:#0f172a;
@@ -652,6 +737,7 @@ function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
   --muted:#94a3b8;
   --chip-bg:#1e293b;
   --chip-on:#273549;
+  --lock:#94a3b8;
 }
 
 /* —— 版面與 UI —— */
@@ -680,7 +766,14 @@ function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
 
 .item{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card-bg);cursor:pointer;margin-bottom:10px}
 .item.selected{outline:2px solid #9ec5ff}
+.item.locked{position:relative}
+.item.locked::after{
+  content:'🔒';
+  position:absolute; right:10px; top:10px; opacity:.6; font-size:14px;
+}
 .item-title{font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.lock-pill{font-size:11px; color:var(--lock); border:1px dashed var(--border); padding:2px 6px; border-radius:999px}
+
 .grip{cursor:grab;opacity:.6}
 .floating-opener{position:fixed;left:12px;top:16px;z-index:30;border:1px solid #e1e7f0;border-radius:10px;background:#fff;padding:6px 10px;box-shadow:0 3px 12px rgba(0,0,0,.08);cursor:pointer}
 
@@ -688,6 +781,12 @@ function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
 .card-title{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700}
 .topbar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .topbar-title{font-weight:800}
+
+.locked-banner{
+  margin:10px 0 6px;
+  background:#fff7ed; border:1px solid #fed7aa; color:#9a3412;
+  padding:8px 10px; border-radius:10px; font-size:13px;
+}
 
 .main .editor{padding:14px 14px 18px}
 .row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
@@ -710,11 +809,14 @@ function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
 .tag.active{outline:2px solid #93c5fd}
 .x{border:none;background:transparent;cursor:pointer;opacity:.7;color:var(--text)}
 .x:hover{opacity:1}
+.x:disabled{opacity:.4; cursor:not-allowed}
+
 .dock{margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
 .dock-title{font-size:13px;color:#475569;margin-bottom:6px}
 .dock-list{display:flex;gap:8px;flex-wrap:wrap}
 .dock-btn{border:1px solid var(--border);background:var(--card-bg);border-radius:10px;padding:6px 8px;cursor:pointer;color:var(--text)}
 .dock-btn.active{background:var(--chip-on);border-color:#cfe9ff}
+.dock-btn.disabled{opacity:.45; cursor:not-allowed}
 
 .btn{border:1px solid #cfe0ff;background:#fff;color:#2563eb;border-radius:12px;padding:8px 12px;cursor:pointer}
 .dark .btn{background:#0f172a}
@@ -723,6 +825,7 @@ function saveBool(key, v){ localStorage.setItem(key, JSON.stringify(!!v)) }
 .dark .btn.ghost{color:#e2e8f0}
 .btn.small{padding:6px 10px}
 .link{background:transparent;border:none;color:#2563eb;cursor:pointer}
+.link[disabled]{opacity:.4;cursor:not-allowed}
 .link.danger{color:#dc2626}
 .small{font-size:12px}
 .center{text-align:center}

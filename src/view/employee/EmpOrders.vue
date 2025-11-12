@@ -1,8 +1,9 @@
+<!-- src/view/boss/BossOrderSettings.vue 〈完整可覆蓋〉 -->
 <template>
-  <section class="orders-page">
-    <!-- 頁首（無任何門市選單） -->
+  <section class="orders-page" v-if="isEmp">
+    <!-- 頁首（無任何門市選擇） -->
     <div class="main-head card">
-      <div class="h2">員工訂單中心</div>
+      <div class="h2">訂單情況（員工）</div>
       <div class="spacer"></div>
       <div class="actions">
         <button class="btn ghost small" @click="showCatalog = !showCatalog">
@@ -226,6 +227,12 @@
 
     <transition name="fade"><div v-if="toast" class="toast">{{ toast }}</div></transition>
   </section>
+
+  <!-- 如日後需要：Boss 模式可在此加上老闆設定介面 -->
+  <section v-else class="placeholder card">
+    <div class="h2">訂單設定（老闆）</div>
+    <p class="muted">此檔同時支援員工/老闆模式。若要顯示老闆設定，請在路由以 props: { role: 'boss' } 掛載並實作。</p>
+  </section>
 </template>
 
 <script setup>
@@ -233,7 +240,11 @@ import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useScope } from '@/store/scope'
 import { read } from '@/store/datasource'
 
-/* ====== 僅使用當前登入者的門市（無門市選擇，僅顯示名稱） ====== */
+/* 由路由傳入：role='emp' 或 'boss'（本檔聚焦 emp） */
+const props = defineProps({ role: { type: String, default: 'emp' } })
+const isEmp = computed(() => props.role === 'emp')
+
+/* ====== 只使用當前登入者的門市（無門市選擇，僅顯示名稱） ====== */
 const scope = useScope()
 const myStoreId   = ref('')
 const myStoreName = ref('')
@@ -259,7 +270,6 @@ const vendors = reactive(
     ? snap.vendors.map(v => ({ id:String(v.id), name:String(v.name) }))
     : [
         { id:'vendor-central', name:'中央廚房' },
-        { id:'vendor-egg',     name:'溏心蛋供應商' },
         { id:'vendor-veg',     name:'在地蔬菜行' },
         { id:'vendor-season',  name:'調味品供應商' },
         { id:'vendor-pack',    name:'包材供應商' },
@@ -281,7 +291,6 @@ function loadCatalog(){
   const seed = [
     { id: rid(), name:'去骨雞腿（真空包，生）', unit:'包' },
     { id: rid(), name:'雞高湯基底',             unit:'桶' },
-    { id: rid(), name:'溏心蛋',                 unit:'顆' },
     { id: rid(), name:'小黃瓜',                 unit:'條' },
   ]
   localStorage.setItem('emp-orders-catalog', JSON.stringify(seed))
@@ -330,10 +339,9 @@ function loadDB(){
   selectedId.value = (tab.value==='req' ? dbState.req[0]?.id : dbState.ord[0]?.id) || null
   saveDB()
 }
-
 onMounted(() => loadDB())
 
-/* 監聽門市切換：若 scope 切換（假資料 <-> Firebase / 不同門市），自動重載 */
+/* 監聽門市切換：自動重載 */
 watch(
   () => myStoreId.value,
   () => {
@@ -512,7 +520,7 @@ function importJSON(e){
 .fade-enter-active,.fade-leave-active{ transition:opacity .15s } .fade-enter-from,.fade-leave-to{ opacity:0 }
 </style>
 
-<!-- 這段為「全域樣式」（無 scoped），確保 header / layout 的門市下拉也會被隱藏 -->
+<!-- 全域樣式（無 scoped），確保 header / layout 的門市下拉也會被隱藏 -->
 <style>
 .select-store,
 [data-role="store-select"],

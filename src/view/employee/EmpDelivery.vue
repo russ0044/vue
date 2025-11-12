@@ -171,19 +171,19 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted, nextTick } from 'vue'
+import { reactive, ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useScope } from '@/store/scope'
-import * as datasource from '@/store/datasource'  // 讀寫資料來源模式（若未實作會自動 fallback）
+import * as datasource from '@/store/datasource'
 import seed from '@/seed/seedData'
 
-// ========== 小工具 ==========
+/* ---------- 小工具 ---------- */
 const scope = useScope()
 const toast = ref('')
 const tip = (m)=>{ toast.value=m; setTimeout(()=>toast.value='',1400) }
 const todayStr = () => new Date().toISOString().slice(0,10)
 const nextId = () => 'dl-' + Math.random().toString(36).slice(2,10)
 
-// ========== 資料來源模式（跟全域一致） ==========
+/* ---------- 資料來源模式（與全域同步） ---------- */
 function readRuntimeMode(){
   const fromDS = (datasource.getMode?.() || '').toLowerCase()
   if (fromDS === 'firebase' || fromDS === 'mock') {
@@ -192,16 +192,14 @@ function readRuntimeMode(){
   return localStorage.getItem('runtime-mode') || 'local'
 }
 function writeRuntimeMode(v){
-  // 優先呼叫 datasource.setMode（若存在）
   if (datasource.setMode) {
     datasource.setMode(v === 'local' ? 'mock' : 'firebase')
   }
   localStorage.setItem('runtime-mode', v)
 }
-
 const runtimeMode = ref(readRuntimeMode())
 
-// ========== DB（in-memory） ==========
+/* ---------- In-memory DB ---------- */
 const db = reactive({ deliveries: [] })
 
 async function fetchAll(){
@@ -212,39 +210,70 @@ async function fetchAll(){
   }
 }
 
+/** 從 local / seed 載入（支援 deliveries | empDeliveries | delivery.schedule） */
 function loadLocal(){
-  // 1) 讀 localStorage
+  // 1) 讀 localStorage（只有在有資料時才採用）
   const raw = localStorage.getItem('delivery-db')
   if (raw) {
     try {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed.deliveries)) {
+      if (Array.isArray(parsed.deliveries) && parsed.deliveries.length > 0) {
         db.deliveries = parsed.deliveries
         return
       }
     } catch { console.warn('[delivery-db] parse error, fallback to seed') }
   }
 
-  // 2) 讀 seed（若 seed 不含 deliveries，建立示意單）
-  const initial = seed()
-  if (Array.isArray(initial.deliveries)) {
-    db.deliveries = initial.deliveries
-  } else {
-    db.deliveries = [
-      {
+  // 2) 用 seed 回填
+  const s = seed() || {}
+  let list = []
+
+  if (Array.isArray(s.deliveries) && s.deliveries.length) {
+    list = s.deliveries
+  } else if (Array.isArray(s.empDeliveries) && s.empDeliveries.length) {
+    list = s.empDeliveries.map(x => ({
+      id: x.id || nextId(),
+      storeId: x.storeId,
+      date: x.date,
+      no: x.no || x.id || ('DL-' + Math.floor(Math.random()*900+100)),
+      status: x.status || 'preparing',
+      note: x.note || '',
+      items: (x.items || []).map(it => ({
+        key: it.key || nextId(),
+        name: it.name, unit: it.unit, qty: it.qty
+      })),
+    }))
+  } else if (Array.isArray(s.delivery?.schedule) && s.delivery.schedule.length) {
+    list = s.delivery.schedule.flatMap(sch =>
+      (sch.stops || []).map(stop => ({
         id: nextId(),
-        storeId: scope.storeId,
-        date: todayStr(),
-        no: 'DL-' + Math.floor(Math.random()*900+100),
+        storeId: stop.storeId,
+        date: sch.date,
+        no: sch.id || `DL-${Math.floor(Math.random()*900+100)}`,
         status: 'preparing',
-        note: '',
-        items: [
-          { key: nextId(), name: '去骨雞腿（真空包，生）', unit: '包', qty: 30 },
-          { key: nextId(), name: '雞高湯基底',             unit: '桶', qty: 2 },
-        ],
-      }
-    ]
+        note: `${sch.routeName || ''} ${sch.vehicle || ''} ETA:${stop.eta || ''}`.trim(),
+        items: [], // 只知道車次/站點，先無明細
+      }))
+    )
   }
+
+  // 3) 若仍無資料，為目前門市生成一筆示例
+  if (!list.length) {
+    list = [{
+      id: nextId(),
+      storeId: scope.storeId,
+      date: todayStr(),
+      no: 'DL-' + Math.floor(Math.random()*900+100),
+      status: 'preparing',
+      note: '示例配送單',
+      items: [
+        { key: nextId(), name: '去骨雞腿（真空包，生）', unit: '包', qty: 30 },
+        { key: nextId(), name: '雞高湯基底',             unit: '桶', qty: 2 },
+      ],
+    }]
+  }
+
+  db.deliveries = list
   saveLocal()
 }
 
@@ -254,28 +283,26 @@ function saveLocal(){
 
 async function fetchAllFromFirebase(){
   // TODO: 串 Firestore（依專案實作）
-  // 目前不崩潰：沿用本地資料
+  // 目前先沿用本地資料
   loadLocal()
 }
-
 async function saveAllToFirebase(){
   // TODO: 寫回 Firestore
   saveLocal()
 }
-
 function onModeChanged(){
   writeRuntimeMode(runtimeMode.value)
   tip('資料來源已切換')
-  fetchAll()
+  fetchAll().then(adjustDateAndSelection)
 }
 
-// ========== 畫面狀態 ==========
+/* ---------- 畫面狀態 ---------- */
 const drawerOpen = ref(false)
 const dateStr = ref(todayStr())
 const status = ref('all')
 const selectedId = ref(null)
 
-// 門市名稱（顯示用）
+/* 門市名稱（顯示用） */
 const currentStoreName = computed(()=>{
   if (scope.storeName) return scope.storeName
   if (Array.isArray(scope.stores) && scope.stores.length){
@@ -285,16 +312,16 @@ const currentStoreName = computed(()=>{
   return scope.storeId || '—'
 })
 
-// 清單（依日期/狀態/門市）
+/* 清單（依日期/狀態/門市） */
 const filteredList = computed(()=>{
   return db.deliveries
-    .filter(d => d.storeId === scope.storeId)
-    .filter(d => d.date === dateStr.value)
+    .filter(d => !scope.storeId || d.storeId === scope.storeId)
+    .filter(d => !dateStr.value || d.date === dateStr.value)
     .filter(d => status.value === 'all' ? true : d.status === status.value)
-    .sort((a,b)=> a.no.localeCompare(b.no))
+    .sort((a,b)=> String(a.no).localeCompare(String(b.no)))
 })
 
-// 目前選中的配送單
+/* 目前選中的配送單 */
 const cur = computed(()=> db.deliveries.find(d => d.id === selectedId.value) || null)
 
 function selectLeft(id){
@@ -302,7 +329,7 @@ function selectLeft(id){
   drawerOpen.value = false
 }
 
-// 狀態推進
+/* 狀態推進 */
 function nextStage(){
   if (!cur.value) return
   if (cur.value.status === 'preparing') cur.value.status = 'shipping'
@@ -316,18 +343,17 @@ function persist(){
   else saveLocal()
 }
 
-// 匯出 / 匯入
+/* 匯出 / 匯入 */
 function exportJSON(){
   const blob = new Blob([JSON.stringify(db, null, 2)], { type:'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `delivery-${scope.storeId}.json`
+  a.download = `delivery-${scope.storeId || 'all'}.json`
   a.click()
   URL.revokeObjectURL(url)
   tip('已匯出')
 }
-
 function importJSON(e){
   const f = e.target.files?.[0]
   if (!f) return
@@ -339,9 +365,7 @@ function importJSON(e){
       db.deliveries = obj.deliveries
       persist()
       tip('已匯入')
-      nextTick(()=>{ // 匯入後若列表有內容，自動選第一筆
-        if (filteredList.value.length) selectedId.value = filteredList.value[0].id
-      })
+      nextTick(()=>adjustDateAndSelection())
     }catch{
       tip('匯入失敗：格式錯誤')
     }
@@ -349,7 +373,7 @@ function importJSON(e){
   reader.readAsText(f, 'utf-8')
 }
 
-// 狀態顯示
+/* 狀態顯示 */
 function statusText(s){
   if (s === 'preparing') return '準備中'
   if (s === 'shipping')  return '運送中'
@@ -363,19 +387,51 @@ function statusClass(s){
   return ''
 }
 
-// 掛載
-onMounted(async()=>{
-  await fetchAll()
+/* 依目前門市自動挑選有資料的日期與第一筆單據 */
+function adjustDateAndSelection(){
+  const forStore = db.deliveries.filter(d => !scope.storeId || d.storeId === scope.storeId)
+  const dates = Array.from(new Set(forStore.map(d => d.date))).sort()
+  if (dates.length && !dates.includes(dateStr.value)) {
+    dateStr.value = dates[0]
+  }
   if (!selectedId.value && filteredList.value.length){
     selectedId.value = filteredList.value[0].id
   }
+}
+
+onMounted(async ()=>{
+  await fetchAll()
+  adjustDateAndSelection()
+
+  // 若仍無任何可見資料，生成一筆當日示例（避免空畫面）
+  if (!filteredList.value.length) {
+    const demo = {
+      id: nextId(),
+      storeId: scope.storeId,
+      date: todayStr(),
+      no: 'DL-' + Math.floor(Math.random()*900+100),
+      status: 'preparing',
+      note: '示例配送單',
+      items: [
+        { key: nextId(), name: '去骨雞腿（真空包，生）', unit: '包', qty: 24 },
+        { key: nextId(), name: '雞高湯基底', unit: '桶', qty: 4 },
+      ],
+    }
+    db.deliveries.push(demo)
+    persist()
+    dateStr.value = demo.date
+    selectedId.value = demo.id
+  }
+})
+
+/* 切換門市時（如果你的 useScope 會動態變更），自動刷新選取 */
+watch(() => scope.storeId, () => {
+  nextTick(() => adjustDateAndSelection())
 })
 </script>
 
 <style scoped>
-/* 這支樣式全面使用「全域主題變數」：
-   --bg-page, --bg-card, --border, --text-main, --text-sub
-   主題切換時（.emp-shell.dark）會自動生效 */
+/* 這支樣式全面使用「全域主題變數」 */
 .delivery-page{
   min-height:100vh;
   background:var(--bg-page);

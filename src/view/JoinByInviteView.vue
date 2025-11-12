@@ -262,3 +262,4 @@ h1{ font-size:1.25rem; margin:0 0 .75rem; }
   border-radius:10px; padding:.65rem 1rem; font-weight:500; cursor:pointer;
 }
 </style>
+  

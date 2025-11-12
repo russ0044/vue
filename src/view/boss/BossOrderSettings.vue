@@ -3,14 +3,33 @@
   <section class="inv-page">
     <!-- 頁首 -->
     <header class="inv-header card-lite sticky-top">
-      <div class="title">{{ isBoss ? '老闆訂單設定 / 中央控管' : '員工訂單中心' }}</div>
+      <div class="title">
+        <span v-if="isBoss">老闆訂單設定 / 中央控管</span>
+        <span v-else>員工訂單中心</span>
+      </div>
       <div class="spacer"></div>
-      <div class="today-hint muted small">
-        今日：待審核 {{ kpi.todayPending }} 單｜已核准 {{ kpi.todayApproved }} 單
+
+      <div class="today-counters">
+        <span class="tiny muted">今日</span>
+        <span class="pill stat">總單 {{ kpi.todayTotal }}</span>
+        <span class="pill warn">待審 {{ kpi.todayPending }}</span>
+        <span class="pill ok">核准 {{ kpi.todayApproved }}</span>
+        <span class="pill">送出 {{ kpi.todaySent }}</span>
+      </div>
+
+      <!-- 範圍切換（員工隱藏） -->
+      <div v-if="isBoss" class="scope-row">
+        <select class="input h32" v-model="scopeType" @change="onScopeChange">
+          <option value="all">全部門市</option>
+          <option value="store">單店</option>
+        </select>
+        <select v-if="scopeType==='store'" class="input h32" v-model="scopeStoreId">
+          <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
       </div>
     </header>
 
-    <!-- 頂部分頁 -->
+    <!-- 分頁 -->
     <div class="inv-tabs">
       <button :class="['tab', tab==='overview' && 'active']" @click="tab='overview'">訂單情況</button>
       <button :class="['tab', tab==='compose'  && 'active']" @click="tab='compose'">
@@ -18,29 +37,17 @@
       </button>
       <button :class="['tab', tab==='logs'     && 'active']" @click="tab='logs'">打單紀錄</button>
       <div class="spacer"></div>
-
-      <!-- 範圍切換（全部 / 單店） -->
-      <div class="row gap">
-        <select class="input" v-model="scopeType">
-          <option value="all">全部門市</option>
-          <option value="store">單店</option>
-        </select>
-        <select class="input" v-if="scopeType==='store'" v-model="scopeStoreId">
-          <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-      </div>
     </div>
 
     <div class="inv-grid">
-      <!-- 左欄：草稿 / 待審核 -->
+      <!-- 左側：草稿/待審核 -->
       <aside class="inv-side">
         <div class="side-tools">
           <div class="search">
             <span>🔎</span>
-            <input class="input bare" v-model.trim="qList" placeholder="搜尋來源或日期… (草稿 / 待審核)" />
+            <input class="input bare" v-model.trim="qList" placeholder="搜尋來源 / 門市 / 日期（草稿 / 待審）…" />
           </div>
 
-          <!-- 來源標籤（超過 5 個顯示展開 / 收起） -->
           <div class="chips">
             <button
               v-for="v in vendorChipsVisible"
@@ -57,8 +64,8 @@
             >{{ showAllTags ? '收起' : `展開 ${vendors.length - MAX_TAGS}` }}</button>
           </div>
 
-          <div class="side-actions row gap">
-            <button class="btn primary w-full" @click="startManual()">＋ 新增手動打單</button>
+          <div class="row gap">
+            <button class="btn primary w-full" @click="startManual">＋ 新增手動打單</button>
           </div>
         </div>
 
@@ -67,7 +74,7 @@
             v-for="o in filteredOrders"
             :key="o.id"
             class="side-item"
-            :class="{active: o.id===selectedOrderId}"
+            :class="{ active: o.id===selectedOrderId }"
             @click="openOrder(o.id)"
           >
             <div class="left-col">
@@ -77,11 +84,9 @@
             <div class="grow">
               <div class="row top-row">
                 <strong>{{ vendorName(o.vendorId) }}</strong>
-                <span class="muted tiny">{{ storeName(o.storeId) }}</span>
+                <span class="muted tiny">｜{{ storeName(o.storeId) }}</span>
               </div>
-              <div class="muted small">
-                {{ o.date }}｜{{ o.items.length }} 項
-              </div>
+              <div class="muted small">{{ o.date }}｜{{ o.items.length }} 項</div>
             </div>
 
             <div class="action-col">
@@ -93,15 +98,13 @@
             </div>
           </div>
 
-          <p v-if="!filteredOrders.length" class="muted center small">
-            目前沒有草稿或待審核的訂單
-          </p>
+          <p v-if="!filteredOrders.length" class="muted center small">目前沒有草稿或待審核的訂單</p>
         </div>
       </aside>
 
-      <!-- 右欄主內容 -->
+      <!-- 右側主體 -->
       <main class="inv-main card">
-        <!-- ====== 概覽（合併卡片 + 分段切換） ====== -->
+        <!-- 概覽 -->
         <template v-if="tab==='overview'">
           <div class="kpi-grid">
             <div class="kpi"><div class="kpi-title">今日總單數</div><div class="kpi-value">{{ kpi.todayTotal }}</div></div>
@@ -146,17 +149,12 @@
 
           <section class="card-lite alert-block" v-if="suspiciousOrders.length">
             <div class="section-head">
-              <h3 class="h3 warn-text">可疑/異常訂單</h3>
-              <div class="hint muted tiny">單日下單量異常高、或同一來源短時間連續下多單</div>
+              <h3 class="h3 warn-text">可疑 / 異常訂單</h3>
+              <div class="hint muted tiny">單量異常、或同來源短時間連續下單。</div>
             </div>
             <div class="table-wrap x-scroll">
               <table class="tbl">
-                <thead>
-                  <tr>
-                    <th>日期</th><th>門市</th><th>來源</th>
-                    <th class="num">品項數</th><th class="num">狀態</th><th class="num">處理</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>日期</th><th>門市</th><th>來源</th><th class="num">品項數</th><th class="num">狀態</th><th class="num">處理</th></tr></thead>
                 <tbody>
                   <tr v-for="o in suspiciousOrders" :key="o.id">
                     <td>{{ o.date }}</td>
@@ -164,9 +162,7 @@
                     <td>{{ vendorName(o.vendorId) }}</td>
                     <td class="num">{{ o.items.length }}</td>
                     <td class="num"><span class="badge" :class="o.status">{{ statusText(o.status) }}</span></td>
-                    <td class="num">
-                      <button class="btn small" @click="openOrder(o.id); tab='compose'; mode='pending'">檢視</button>
-                    </td>
+                    <td class="num"><button class="btn small" @click="openOrder(o.id); tab='compose'; mode='pending'">檢視</button></td>
                   </tr>
                 </tbody>
               </table>
@@ -174,7 +170,7 @@
           </section>
         </template>
 
-        <!-- ====== 管理打單 ====== -->
+        <!-- 管理打單 -->
         <template v-else-if="tab==='compose'">
           <div class="compose-head">
             <div class="seg">
@@ -189,35 +185,26 @@
               <select class="input" v-model="ui.vendorId">
                 <option v-for="v in vendors" :key="v.id" :value="v.id">{{ v.name }}</option>
               </select>
-              <select class="input" v-model="ui.storeId">
+              <!-- 店面：老闆可切、員工鎖定 -->
+              <select class="input" v-model="ui.storeId" :disabled="!isBoss">
                 <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
               </select>
             </div>
           </div>
 
-          <!-- AI 模式（老闆：設定規則＋預覽；員工：直接產生建議） -->
+          <!-- AI 模式 -->
           <template v-if="mode==='ai'">
             <div class="card-lite" v-if="isBoss">
               <div class="section-head">
                 <h3 class="h3">AI 建議規則設定（老闆端）</h3>
-                <div class="hint muted tiny">這些權重會影響員工端的 AI 建議計算。</div>
+                <div class="hint muted tiny">這些權重會影響員工端的 AI 建議結果。</div>
               </div>
               <div class="row gap mt-8">
-                <label>星期影響
-                  <input class="input w90" type="number" min="0.5" max="1.5" step="0.01" v-model.number="aiConfig.weekdayWeight">
-                </label>
-                <label>天氣影響
-                  <input class="input w90" type="number" min="0.5" max="1.5" step="0.01" v-model.number="aiConfig.weatherWeight">
-                </label>
-                <label>節慶影響
-                  <input class="input w90" type="number" min="0.5" max="1.5" step="0.01" v-model.number="aiConfig.holidayWeight">
-                </label>
-                <label>趨勢敏感度
-                  <input class="input w90" type="number" min="0.8" max="1.2" step="0.01" v-model.number="aiConfig.trendSensitivity">
-                </label>
-                <label>類別加成（有標籤）
-                  <input class="input w90" type="number" min="1.0" max="1.2" step="0.01" v-model.number="aiConfig.tagBoost">
-                </label>
+                <label>星期影響 <input class="input w90" type="number" min="0.5" max="1.5" step="0.01" v-model.number="aiConfig.weekdayWeight"></label>
+                <label>天氣影響 <input class="input w90" type="number" min="0.5" max="1.5" step="0.01" v-model.number="aiConfig.weatherWeight"></label>
+                <label>節慶影響 <input class="input w90" type="number" min="0.5" max="1.5" step="0.01" v-model.number="aiConfig.holidayWeight"></label>
+                <label>趨勢敏感度 <input class="input w90" type="number" min="0.8" max="1.2" step="0.01" v-model.number="aiConfig.trendSensitivity"></label>
+                <label>類別加成 <input class="input w90" type="number" min="1.0" max="1.2" step="0.01" v-model.number="aiConfig.tagBoost"></label>
                 <div class="spacer"></div>
                 <button class="btn primary small" @click="saveAIConfig">儲存規則</button>
               </div>
@@ -226,9 +213,9 @@
             <div class="ai-toolbar">
               <div class="row gap">
                 <button class="btn" @click="runAI">{{ isBoss ? '套用規則並預覽' : '重新產生建議' }}</button>
-                <div class="muted small">
-                  {{ isBoss ? '此段為預覽，實際員工端將依此規則計算。' : '依最近 30 天銷售、星期別、天氣、節慶，自動估算需求量，可手動微調。' }}
-                </div>
+                <span class="muted small">
+                  {{ isBoss ? '此區為預覽；員工端將依此規則計算。' : '依近 30 天銷售/星期/天氣/節慶估算需求，可手動微調。' }}
+                </span>
               </div>
               <div class="spacer"></div>
               <div class="row gap">
@@ -242,36 +229,35 @@
                 <h3 class="h3">AI 建議清單（{{ ui.date }}）</h3>
                 <div class="muted small">來源：{{ vendorName(ui.vendorId) }}</div>
               </div>
+
               <div class="table-wrap x-scroll">
                 <table class="tbl">
                   <thead>
-                    <tr>
-                      <th style="width:28px;"></th>
-                      <th>品項</th>
-                      <th class="num">現有庫存</th>
-                      <th class="num">建議數量</th>
-                      <th>影響因素</th>
-                      <th class="num">調整後</th>
-                      <th class="num">+ / −</th>
-                    </tr>
+                  <tr>
+                    <th style="width:28px"></th>
+                    <th>品項</th>
+                    <th class="num">現有庫存</th>
+                    <th class="num">建議數量</th>
+                    <th>影響因素</th>
+                    <th class="num">調整後</th>
+                    <th class="num">＋／－</th>
+                  </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="row in aiRows" :key="row.id">
-                      <td><label class="ck"><input type="checkbox" v-model="row.checked"><span></span></label></td>
-                      <td>
-                        <div class="item-cell"><div class="name">{{ row.name }}</div><div class="muted tiny">單位：{{ row.unit }}</div></div>
-                      </td>
-                      <td class="num">{{ row.stock }}</td>
-                      <td class="num"><strong>{{ row.suggest }}</strong></td>
-                      <td class="reason"><div class="tags"><span class="pill" v-for="t in row.reasons" :key="t">{{ t }}</span></div></td>
-                      <td class="num"><input type="number" min="0" class="input w90" v-model.number="row.finalQty"></td>
-                      <td class="num">
-                        <div class="row gap">
-                          <button class="btn small" @click="row.finalQty = Math.max(0,(row.finalQty||0)+step(row))">＋</button>
-                          <button class="btn small" @click="row.finalQty = Math.max(0,(row.finalQty||0)-step(row))">－</button>
-                        </div>
-                      </td>
-                    </tr>
+                  <tr v-for="row in aiRows" :key="row.id">
+                    <td><label class="ck"><input type="checkbox" v-model="row.checked"><span /></label></td>
+                    <td><div class="item-cell"><div class="name">{{ row.name }}</div><div class="muted tiny">單位：{{ row.unit }}</div></div></td>
+                    <td class="num">{{ row.stock }}</td>
+                    <td class="num"><strong>{{ row.suggest }}</strong></td>
+                    <td class="reason"><div class="tags"><span class="pill" v-for="t in row.reasons" :key="t">{{ t }}</span></div></td>
+                    <td class="num"><input type="number" min="0" class="input w90" v-model.number="row.finalQty"></td>
+                    <td class="num">
+                      <div class="row gap">
+                        <button class="btn small" @click="row.finalQty = Math.max(0,(row.finalQty||0)+step(row))">＋</button>
+                        <button class="btn small" @click="row.finalQty = Math.max(0,(row.finalQty||0)-step(row))">－</button>
+                      </div>
+                    </td>
+                  </tr>
                   </tbody>
                 </table>
               </div>
@@ -286,12 +272,12 @@
             </div>
           </template>
 
-          <!-- 手動模式 -->
+          <!-- 手動 -->
           <template v-else-if="mode==='manual'">
             <div class="ai-toolbar">
               <div class="row gap">
                 <input class="input w220" placeholder="搜尋可下單品項…" v-model.trim="qProduct">
-                <button class="btn" @click="addAllFiltered()">加入清單</button>
+                <button class="btn" @click="addAllFiltered">加入清單</button>
               </div>
               <div class="spacer"></div>
               <div class="row gap">
@@ -307,9 +293,7 @@
                   <thead><tr><th>品項</th><th class="num">現有庫存</th><th class="num">下單數量</th><th class="num">移除</th></tr></thead>
                   <tbody>
                     <tr v-for="row in manualRows" :key="row.id">
-                      <td>
-                        <div class="item-cell"><div class="name">{{ row.name }}</div><div class="muted tiny">單位：{{ row.unit }}</div></div>
-                      </td>
+                      <td><div class="item-cell"><div class="name">{{ row.name }}</div><div class="muted tiny">單位：{{ row.unit }}</div></div></td>
                       <td class="num">{{ row.stock }}</td>
                       <td class="num"><input type="number" min="0" class="input w90" v-model.number="row.qty"></td>
                       <td class="num"><button class="btn small" @click="removeManualRow(row.id)">刪</button></td>
@@ -321,12 +305,14 @@
             </div>
           </template>
 
-          <!-- 來源 / 品項（點擊展開） -->
+          <!-- 來源/品項：員工只顯示老闆已選品項 -->
           <template v-else-if="mode==='setup'">
             <div class="card-lite">
               <div class="section-head">
                 <h3 class="h3">{{ isBoss ? '來源／供應單位設定' : '來源／品項（查看）' }}</h3>
-                <div class="hint muted tiny">{{ isBoss ? '例如「中央廚房」、「某某食材行」…（點擊來源展開內容）' : '由老闆設定；員工可檢視可下單品項' }}</div>
+                <div class="hint muted tiny">
+                  {{ isBoss ? '點擊來源展開，切換可下單品項；亦可新增/更名/刪除來源。' : '僅顯示老闆開放的來源與品項。' }}
+                </div>
               </div>
 
               <div class="row gap mt-8" v-if="isBoss">
@@ -335,7 +321,7 @@
               </div>
 
               <div class="vendor-list mt-12">
-                <details v-for="v in vendors" :key="v.id" class="vendor-card">
+                <details v-for="v in visibleVendors" :key="v.id" class="vendor-card">
                   <summary class="vendor-head">
                     <strong>{{ v.name }}</strong>
                     <template v-if="isBoss">
@@ -345,14 +331,21 @@
                     <span class="muted tiny ml8">可下單品項：{{ vendorProducts(v.id).length }} 項</span>
                   </summary>
 
-                  <div class="chips mt-8">
+                  <!-- 老闆：顯示全部品項並可切換；員工：只顯示被選到的品項 -->
+                  <div class="chips mt-8" v-if="isBoss">
                     <button
                       v-for="it in ingredients"
                       :key="it.id"
                       class="chip"
-                      :class="{on: v.productIds.includes(it.id)}"
-                      @click="isBoss && toggleProduct(v.id, it.id)"
+                      :class="{ on: v.productIds.includes(it.id) }"
+                      @click="toggleProduct(v.id, it.id)"
                     >{{ it.name }}</button>
+                  </div>
+                  <div class="chips mt-8" v-else>
+                    <template v-if="vendorProducts(v.id).length">
+                      <span class="pill" v-for="it in vendorProducts(v.id)" :key="it.id">{{ it.name }}</span>
+                    </template>
+                    <div v-else class="muted tiny">此來源目前未開放任何品項</div>
                   </div>
                 </details>
               </div>
@@ -364,7 +357,7 @@
             <div class="card-lite">
               <div class="section-head">
                 <h3 class="h3">待審核訂單</h3>
-                <div class="hint muted tiny">{{ isBoss ? '員工送審但尚未核准的單（可切換範圍）' : '查看本店或全部的待審單' }}</div>
+                <div class="hint muted tiny">{{ isBoss ? '可切換範圍檢視並核准/退回。' : '僅可查看本店待審單。' }}</div>
               </div>
               <div class="table-wrap x-scroll">
                 <table class="tbl">
@@ -391,12 +384,12 @@
           </template>
         </template>
 
-        <!-- ====== 紀錄 ====== -->
+        <!-- 打單紀錄 -->
         <template v-else>
           <div class="card-lite">
             <div class="section-head">
               <h3 class="h3">打單紀錄</h3>
-              <div class="hint muted tiny">已核准、已送出、退回的歷史資料（範圍可切換）</div>
+              <div class="hint muted tiny">已核准 / 已送出 / 退回等歷史資料（可篩選）。</div>
             </div>
 
             <div class="row gap mt-8">
@@ -451,7 +444,6 @@
                 </tbody>
               </table>
             </div>
-
           </div>
         </template>
       </main>
@@ -464,7 +456,7 @@
           <input type="file" accept="application/json" @change="importJSON">
         </label>
         <div class="spacer"></div>
-        <div class="muted tiny">所有資料皆存於本機 / 或走 Firebase（系統設定切換）</div>
+        <div class="muted tiny">資料皆存於本機（或由系統設定切換至 Firebase）。</div>
       </div>
     </footer>
 
@@ -477,39 +469,45 @@ import { reactive, ref, computed, watch } from 'vue'
 import { read } from '@/store/datasource'
 
 defineOptions({ name: 'BossOrderSettings' })
-const props = defineProps({
-  role: { type: String, default: 'boss' } // 'boss' | 'emp'
-})
-const isBoss = computed(()=> props.role === 'boss')
+const props = defineProps({ role: { type: String, default: 'boss' } })
+const isBoss = computed(() => props.role === 'boss')
 
-/* ---------- 小工具 ---------- */
+/* 工具 */
 const rid   = () => crypto?.randomUUID?.() ?? 'id-' + Math.random().toString(36).slice(2,10)
 const today = () => new Date().toISOString().slice(0,10)
 const dateOffset = (d, off) => { const x = new Date(d); x.setDate(x.getDate()+off); return x.toISOString().slice(0,10) }
-const hash = s => { let h=0; for(let i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0 } return Math.abs(h) }
+const hash = s => { let h=0; for (let i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0 } return Math.abs(h) }
 
-/* ---------- 範圍（全部 / 單店） ---------- */
+/* 範圍（老闆可切，員工鎖定） */
 const scopeType = ref('all')
 const scopeStoreId = ref('')
 
-/* ---------- 資料容器 ---------- */
+/* 資料載入 */
 const stores = reactive(loadStores())
-if (!scopeStoreId.value) scopeStoreId.value = stores[0]?.id ?? ''
 const ingredients = reactive(loadIngredients())
 const vendors = reactive(loadVendors())
 const orders  = reactive(loadOrders())
 
-/* ---------- UI 狀態 ---------- */
-const tab  = ref('overview')
-const overviewTab = ref('vendor') // 'vendor' | 'items'
-const mode = ref('ai')
-const ui = reactive({ date: today(), vendorId: vendors[0]?.id ?? '', storeId: stores[0]?.id ?? '' })
+/* 員工鎖店（如有你的 useScope，可替換這段） */
+if (!isBoss.value) {
+  scopeType.value = 'store'
+  scopeStoreId.value = stores[0]?.id || ''
+}
 
-/* 左欄：搜尋 + 來源 Chips（可展開/收起） */
+/* UI 狀態 */
+const tab  = ref('overview')
+const overviewTab = ref('vendor')
+const mode = ref('ai')
+const ui = reactive({
+  date: today(),
+  vendorId: vendors[0]?.id ?? '',
+  storeId: isBoss.value ? (stores[0]?.id ?? '') : (scopeStoreId.value || stores[0]?.id || '')
+})
+
+/* 左欄 */
 const qList = ref('')
 const vendorFilter = reactive(new Set())
 const selectedOrderId = ref(null)
-
 const MAX_TAGS = 5
 const showAllTags = ref(false)
 const vendorChipsVisible = computed(() => showAllTags.value ? vendors : vendors.slice(0, MAX_TAGS))
@@ -518,7 +516,7 @@ const filteredOrders = computed(() => {
   const q = qList.value.trim()
   return orders
     .filter(o => (o.status==='draft' || o.status==='pending'))
-    .filter(o => scopeType.value==='all' || o.storeId === scopeStoreId.value)
+    .filter(o => scopeType.value==='all' ? true : o.storeId === scopeStoreId.value)
     .filter(o => !vendorFilter.size || vendorFilter.has(o.vendorId))
     .filter(o => !q || vendorName(o.vendorId).includes(q) || storeName(o.storeId).includes(q) || o.date.includes(q))
     .sort((a,b)=> (a.date < b.date ? 1 : -1))
@@ -539,17 +537,17 @@ function openOrder(id){
   })
   selectedOrderId.value = id
 }
+const onScopeChange = () => { if (scopeType.value === 'store') scopeStoreId.value ||= stores[0]?.id || '' }
 
-/* ---------- AI 建議 ---------- */
+/* AI 建議 */
 const weekdayFactor = d => { const w=new Date(d).getDay(); return w===0?1.15 : w===6?1.10 : 1.0 }
 const weatherFactorBase = w => w==='hot'?1.08 : w==='cold'?0.95 : w==='rainy'?0.92 : 1.0
 const holidayFactorBase = h => h==='festival'?1.12 : 1.0
 const holidayOf = d => ([1,15].includes(new Date(d).getDate()) ? 'festival' : 'none')
 const fakeWeatherOf = d => ['sunny','rainy','hot','cold'][hash('w-'+d)%4]
-
 const salesHistory = (ingId, n) => {
   const out=[]
-  for(let i=1;i<=n;i++){
+  for (let i=1;i<=n;i++){
     const day = dateOffset(ui.date,-i)
     const seed=hash(`${ingId}-${day}`)
     const base=(seed%7)+3
@@ -568,7 +566,7 @@ const trendFactor = id => {
   return r>1.1?aiConfig.trendSensitivity : r<0.9?(2-aiConfig.trendSensitivity) : 1.0
 }
 
-/* 老闆端規則（存 localStorage，員工端讀取） */
+/* 老闆規則 */
 const AI_CFG_KEY = 'boss-ai-config'
 const aiConfig = reactive(loadAIConfig())
 function loadAIConfig(){
@@ -583,7 +581,7 @@ function buildAIContext(d){
   const weather=fakeWeatherOf(d)
   const holiday=holidayOf(d)
   const weekdayName='日一二三四五六'[new Date(d).getDay()]
-  const reasons=[`星期${weekdayName}`, weather==='sunny'?'晴朗':weather==='rainy'?'降雨':weather==='hot'?'高溫':weather==='cold'?'降溫':'—', holiday==='festival'?'節慶':'一般日']
+  const reasons=[`星期${weekdayName}`, weather==='sunny'?'晴朗':weather==='rainy'?'降雨':weather==='hot'?'高溫':'降溫', holiday==='festival'?'節慶':'一般日']
   return { weather, holiday, reasons }
 }
 
@@ -599,10 +597,8 @@ const runAI = () => {
 
   sourceIds.map(id=>ingredients.find(i=>i.id===id)).filter(Boolean).forEach(it=>{
     const base = avgLastNDays(it.id, 30)
-
-    // 套用「老闆規則」權重
     const wday = weekdayFactor(ui.date) ** aiConfig.weekdayWeight
-    const trend= trendFactor(it.id)     // 已內含 trendSensitivity
+    const trend= trendFactor(it.id)
     const weather = (weatherFactorBase(ctx.weather)) ** aiConfig.weatherWeight
     const holiday = (holidayFactorBase(ctx.holiday)) ** aiConfig.holidayWeight
     const tag = it.tags?.length ? aiConfig.tagBoost : 1.0
@@ -616,7 +612,7 @@ const runAI = () => {
 }
 watch(() => [ui.date, ui.vendorId], () => runAI(), { immediate: true })
 
-/* ---------- 手動打單 ---------- */
+/* 手動打單 */
 const qProduct = ref('')
 const manualRows = reactive([])
 const filteredProducts = computed(()=>{
@@ -630,7 +626,7 @@ const removeManualRow = id => { const i=manualRows.findIndex(r=>r.id===id); if(i
 function startManual(){ tab.value='compose'; mode.value='manual'; manualRows.splice(0) }
 const sumManual = computed(()=> manualRows.reduce((s,r)=> s + (Number(r.qty)||0), 0))
 
-/* ---------- 建單流程 ---------- */
+/* 建單流程 */
 function buildOrderItemsFromCurrentForm(){
   return mode.value==='ai'
     ? aiRows.filter(r=>r.checked && r.finalQty>0).map(r=>({ ingredientId:r.id, qty:r.finalQty }))
@@ -652,10 +648,14 @@ function rejectOrder(id){ if(!isBoss.value) return; const o=orders.find(x=>x.id=
 function sendOrder(id){ if(!isBoss.value) return; const o=orders.find(x=>x.id===id); if(!o) return; o.status='sent'; persistOrders(); toast('已送出') }
 const statusText = s => s==='draft'?'草稿':s==='pending'?'待審核':s==='approved'?'已核准':s==='rejected'?'已退回':'已送出'
 
-/* ---------- 依範圍篩選的 orders ---------- */
-const scopeOrders = computed(()=> orders.filter(o => scopeType.value==='all' ? true : o.storeId===scopeStoreId.value))
+/* 依範圍 orders */
+const scopeOrders = computed(() =>
+  orders.filter(o => isBoss.value
+    ? (scopeType.value==='all' ? true : o.storeId===scopeStoreId.value)
+    : o.storeId === ui.storeId)
+)
 
-/* ---------- 概覽 KPI / 排行 / 異常（依範圍） ---------- */
+/* KPI / 排行 / 異常 */
 const kpi = computed(()=> {
   const d=today(), ts=scopeOrders.value.filter(o=>o.date===d)
   return { todayTotal: ts.length, todayPending: ts.filter(o=>o.status==='pending').length, todayApproved: ts.filter(o=>o.status==='approved').length, todaySent: ts.filter(o=>o.status==='sent').length }
@@ -678,7 +678,17 @@ const suspiciousOrders = computed(()=> {
   return out.filter(o=>o.date>=since).sort((a,b)=> (a.date<b.date?1:-1))
 })
 
-/* ---------- 紀錄 ---------- */
+/* 設定頁：僅顯示有被勾選品項的來源（員工） */
+const visibleVendors = computed(() => {
+  return isBoss.value ? vendors : vendors.filter(v => Array.isArray(v.productIds) && v.productIds.length > 0)
+})
+function vendorProducts(vid){
+  const v = vendors.find(x=>x.id===vid)
+  const ids = new Set(v?.productIds || [])
+  return ingredients.filter(i => ids.has(i.id))
+}
+
+/* 紀錄 */
 const logFilter = reactive({ from:'', to:'', status:'', vendorId:'' })
 const filteredLogs = computed(()=> scopeOrders.value
   .filter(o=> !logFilter.status   || o.status===logFilter.status)
@@ -689,9 +699,8 @@ const filteredLogs = computed(()=> scopeOrders.value
 )
 const resetLogFilter = () => { logFilter.from=''; logFilter.to=''; logFilter.status=''; logFilter.vendorId='' }
 
-/* ---------- 來源/品項設定 ---------- */
+/* 來源維護（老闆） */
 const newVendorName = ref('')
-function vendorProducts(vid){ return ingredients.filter(i=> vendors.find(v=>v.id===vid)?.productIds.includes(i.id)) }
 function createVendor(){ if(!isBoss.value) return; const v = { id: rid(), name: newVendorName.value, productIds: [] }; vendors.push(v); newVendorName.value=''; persistVendors(); toast('已新增來源') }
 function renameVendor(v){ if(!isBoss.value) return; const n = prompt('輸入新名稱', v.name); if(!n) return; v.name = n; persistVendors(); toast('已更名') }
 function removeVendor(id){ if(!isBoss.value) return; if(!confirm('確定刪除此來源？')) return; const i=vendors.findIndex(x=>x.id===id); if(i>=0) vendors.splice(i,1); persistVendors(); toast('已刪除') }
@@ -703,7 +712,7 @@ function toggleProduct(vid,pid){
   v.productIds = Array.from(set); persistVendors()
 }
 
-/* ---------- 匯入/匯出 ---------- */
+/* 匯入/匯出 */
 function exportJSON(){
   const data = { vendors, orders }
   const blob = new Blob([JSON.stringify(data,null,2)], { type: 'application/json' })
@@ -720,36 +729,32 @@ function importJSON(e){
       if (obj.vendors && isBoss.value) { vendors.splice(0); obj.vendors.forEach(v=>vendors.push(v)); persistVendors() }
       if (obj.orders)  { orders.splice(0);  obj.orders.forEach(o=>orders.push(o));  persistOrders() }
       toast('已匯入資料')
-    }catch{ toast('匯入失敗：檔案格式錯誤') }
+    }catch{ toast('匯入失敗：格式錯誤') }
   }
   reader.readAsText(f,'utf-8')
 }
 
-/* ---------- 本地儲存（含 seed） ---------- */
+/* 本地儲存 + seed */
 function loadStores(){
   const snap = read?.() || {}
   if (Array.isArray(snap.stores) && snap.stores.length) {
-    return snap.stores.map(s=>({ id:String(s.id), name:s.name }))
+    return snap.stores.map(s=>({ id:String(s.id), name:String(s.name) }))
   }
   const raw = localStorage.getItem('boss-stores'); if(raw){ try{ return JSON.parse(raw) }catch{} }
   const s = [
     { id: rid(), name:'海南雞 台北店' },
     { id: rid(), name:'海南雞 台中店' },
+    { id: rid(), name:'海南雞 高雄店' },
     { id: rid(), name:'海南雞 中央廚房' },
   ]
   localStorage.setItem('boss-stores', JSON.stringify(s)); return s
 }
 function loadIngredients(){
   const snap = read?.() || {}
-
   if (Array.isArray(snap.products) && snap.products.length){
     return snap.products.map(p => ({
-      id: String(p.id),
-      name: p.name,
-      unit: p.unit || '份',
-      stock: 0,
-      safeStock: Number(p.safeStock ?? 0),
-      tags: p.cat ? [p.cat] : []
+      id: String(p.id), name: p.name, unit: p.unit || '份',
+      stock: 0, safeStock: Number(p.safeStock ?? 0), tags: p.cat ? [p.cat] : []
     }))
   }
   if (Array.isArray(snap.inventory) && snap.inventory.length){
@@ -765,10 +770,10 @@ function loadIngredients(){
     const obj=JSON.parse(raw); if(Array.isArray(obj.ingredients)) return obj.ingredients; if(Array.isArray(obj)) return obj
   }catch{} }
   const ing = [
-    { id: rid(), name:'去骨雞腿（真空包）', unit:'包', stock:60, safeStock:20, tags:['半成品'] },
-    { id: rid(), name:'雞高湯基底',         unit:'桶', stock:12, safeStock: 5, tags:['半成品'] },
-    { id: rid(), name:'薑蓉醬',             unit:'罐', stock:18, safeStock:10, tags:['調味'] },
-    { id: rid(), name:'小黃瓜',             unit:'條', stock:50, safeStock:15, tags:['蔬菜'] },
+    { id: rid(), name:'去骨雞腿（真空包，生）', unit:'包', stock:60, safeStock:20, tags:['半成品'] },
+    { id: rid(), name:'雞高湯基底', unit:'桶', stock:12, safeStock: 5, tags:['半成品'] },
+    { id: rid(), name:'薑蓉醬', unit:'罐', stock:18, safeStock:10, tags:['調味'] },
+    { id: rid(), name:'小黃瓜', unit:'條', stock:50, safeStock:15, tags:['蔬菜'] },
   ]
   localStorage.setItem('boss-ingredients', JSON.stringify({ ingredients: ing, tags: [] }))
   return ing
@@ -791,88 +796,93 @@ function loadOrders(){
 const persistOrders  = () => localStorage.setItem('boss-orders', JSON.stringify(orders))
 const persistVendors = () => localStorage.setItem('boss-vendors', JSON.stringify(vendors))
 
-/* ---------- Toast ---------- */
+/* Toast */
 const toastMsg = ref(''); const toast = m => { toastMsg.value=m; setTimeout(()=>toastMsg.value='',1400) }
 </script>
 
 <style scoped>
-/* —— 样式沿用（調整右欄溢出與 sticky） —— */
+/* 版面與主題 */
 .inv-page{ padding:16px; background:var(--bg); color:var(--text); min-height:100%; height:auto; overflow:visible; }
 .sticky-top{ position:sticky; top:0; z-index:5; background:var(--card-bg); }
-.inv-header{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:8px; margin-bottom:8px; }
+.inv-header{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; }
 .title{ font-size:20px; font-weight:800; }
-.today-hint{ line-height:1.4; }
-.muted{ color:var(--muted); }
-.small{ font-size:12px; }
-.tiny{ font-size:11px; }
 .spacer{ flex:1; }
 
+.scope-row{ display:flex; gap:6px; align-items:center; }
+.h32{ height:32px; }
+
+.today-counters{ display:flex; gap:6px; align-items:center; }
+.pill{ border:1px solid var(--border); background:var(--card-bg); border-radius:999px; padding:4px 8px; font-size:12px }
+.pill.ok{ color:#15803d; border-color:#86efac; background:#f0fdf4; }
+.pill.warn{ color:#b45309; border-color:#fed7aa; background:#fff7ed; }
+
+.muted{ color:var(--muted); } .small{ font-size:12px } .tiny{ font-size:11px }
+
+/* Tabs */
 .inv-tabs{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0 12px; }
-.tab{ border:1px solid var(--border); background:var(--card-bg); color:var(--text); border-radius:10px; padding:8px 12px; cursor:pointer; font-size:14px; line-height:1.2; }
+.tab{ border:1px solid var(--border); background:var(--card-bg); color:var(--text); border-radius:10px; padding:8px 12px; cursor:pointer; font-size:14px; }
 .tab.active{ background:var(--primary-weak); border-color:var(--primary); color:var(--primary); }
 
+/* Grid */
 .inv-grid{ display:grid; grid-template-columns:minmax(260px, 340px) 1fr; gap:12px; min-width:0; }
-.inv-side{ background:var(--card-bg); border:1px solid var(--border); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
+.card{ background:var(--card-bg); border:1px solid var(--border); border-radius:16px; padding:12px; }
+.card-lite{ border:1px dashed var(--border); border-radius:12px; padding:12px; margin-bottom:12px; background:var(--card-bg); }
 
+/* 左側 */
+.inv-side{ border:1px solid var(--border); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
 .side-tools{ display:flex; flex-direction:column; gap:10px; padding:12px; border-bottom:1px solid var(--border); }
-.search{ display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:12px; padding:0 10px; min-height:38px; background:var(--card-bg); width:100%; }
+.search{ display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:12px; padding:0 10px; min-height:38px; background:var(--card-bg); }
 .input{ padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card-bg); color:var(--text); font-size:14px; }
 .input.bare{ border:none; background:transparent; }
-.row{ display:flex; align-items:center; }
-.row.gap{ gap:8px; flex-wrap:wrap; }
+.row{ display:flex; align-items:center; } .row.gap{ gap:8px; flex-wrap:wrap; }
 .chips{ display:flex; gap:8px; flex-wrap:wrap; }
-.chip{ border:1px solid var(--border); border-radius:999px; background:var(--card-bg); color:var(--text); padding:6px 10px; cursor:pointer; font-size:13px; line-height:1.2; }
+.chip{ border:1px solid var(--border); border-radius:999px; background:var(--card-bg); color:var(--text); padding:6px 10px; cursor:pointer; font-size:13px; }
 .chip.on{ background:var(--primary-weak); border-color:var(--primary); color:var(--primary); }
 .chip.ghost{ opacity:.75; }
-.side-actions .btn.primary{ width:100%; }
+.chip.disabled{ opacity:.6; pointer-events:none; }
 
 .side-list{ flex:1; max-height:calc(100vh - 260px); overflow:auto; padding:10px 12px 16px; }
-.side-item{ display:flex; align-items:flex-start; gap:10px; border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px; cursor:pointer; background:var(--card-bg); color:var(--text); position:relative; }
+.side-item{ display:flex; align-items:flex-start; gap:10px; border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px; cursor:pointer; background:var(--card-bg); color:var(--text); }
 .side-item.active{ outline:2px solid var(--primary); }
 .left-col{ display:flex; flex-direction:column; align-items:flex-start; min-width:60px; }
 .top-row{ display:flex; gap:6px; flex-wrap:wrap; }
 .action-col{ margin-left:auto; align-self:flex-start; }
-.mini-ghost{ border:1px solid var(--border); background:var(--card-bg); color:var(--text); border-radius:8px; font-size:12px; line-height:1.2; padding:4px 8px; cursor:pointer; }
+.mini-ghost{ border:1px solid var(--border); background:var(--card-bg); color:var(--text); border-radius:8px; font-size:12px; padding:4px 8px; cursor:pointer; }
 
-.card{ background:var(--card-bg); border:1px solid var(--border); border-radius:16px; padding:12px; min-width:0; }
-.card-lite{ border:1px dashed var(--border); border-radius:12px; padding:12px; margin-bottom:12px; background:var(--card-bg); }
+/* 主內容 */
 .section-head{ display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:4px 8px; }
 .h3{ margin:0 0 4px; font-size:15px; font-weight:600; }
 .hint{ line-height:1.4; }
 .warn-text{ color:#b91c1c; }
 
 .kpi-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:12px; }
-.kpi{ background:var(--card-bg); border:1px solid var(--border); border-radius:14px; padding:16px; min-width:0; }
-.kpi-title{ color:var(--muted); font-size:13px; margin-bottom:6px; line-height:1.3; }
-.kpi-value{ font-size:28px; font-weight:800; line-height:1.15; }
-.kpi-value.ok{ color:#15803d; }
-.kpi-value.warn{ color:#b45309; }
+.kpi{ background:var(--card-bg); border:1px solid var(--border); border-radius:14px; padding:16px; }
+.kpi-title{ color:var(--muted); font-size:13px; margin-bottom:6px; }
+.kpi-value{ font-size:28px; font-weight:800; } .kpi-value.ok{ color:#15803d } .kpi-value.warn{ color:#b45309 }
 
-.alert-block{ border-color:#fde68a; background:var(--card-bg); }
+.alert-block{ border-color:#fde68a; }
 
 .compose-head{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
 .seg{ display:flex; flex-wrap:wrap; gap:6px; }
-.segbtn{ border:1px solid var(--border); background:var(--card-bg); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-size:13px; line-height:1.2; }
+.segbtn{ border:1px solid var(--border); background:var(--card-bg); color:var(--text); border-radius:10px; padding:6px 10px; cursor:pointer; font-size:13px; }
 .segbtn.active{ background:var(--primary-weak); border-color:var(--primary); color:var(--primary); }
 
 .ai-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
 .flex-title{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
-.mt-8{ margin-top:8px; }
-.mt-12{ margin-top:12px; }
-.w-full{ width:100%; }
-.w220{ width:220px; max-width:100%; }
-.w90{ width:90px; max-width:100%; }
+.mt-8{ margin-top:8px } .mt-12{ margin-top:12px } .w-full{ width:100% } .w220{ width:220px; max-width:100% } .w90{ width:90px; max-width:100% }
 
+/* 表格 */
 .table-wrap{ overflow:auto; border:1px solid var(--border); border-radius:12px; }
 .x-scroll{ overflow:auto; }
 .tbl{ width:100%; min-width:720px; border-collapse:collapse; }
-.tbl th, .tbl td{ padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; font-size:13px; line-height:1.4; }
+.tbl th, .tbl td{ padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; font-size:13px; }
 .tbl thead th{ position:sticky; top:0; background:var(--thead-bg); color:var(--thead-text); z-index:1; }
 .tbl tbody tr:hover td{ background:var(--hover-bg); }
 .tbl .num{ text-align:right; }
 .item-cell .name{ font-weight:600; }
 
-.badge{ display:inline-flex; align-items:center; justify-content:center; min-width:54px; height:24px; border-radius:999px; font-size:12px; line-height:1.2; padding:0 8px; border:1px solid var(--border); background:var(--hover-bg); color:var(--text); }
+/* 狀態徽章 */
+.badge{ display:inline-flex; align-items:center; justify-content:center; min-width:54px; height:24px; border-radius:999px; font-size:12px; padding:0 8px; border:1px solid var(--border); background:var(--hover-bg); color:var(--text); }
 .badge.pending{  background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
 .badge.draft{    background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
 .badge.approved{ background:#ecfeff; border-color:#bae6fd; color:#075985; }
@@ -880,13 +890,13 @@ const toastMsg = ref(''); const toast = m => { toastMsg.value=m; setTimeout(()=>
 .badge.sent{     background:#f0fdf4; border-color:#86efac; color:#166534; }
 
 .tags{ display:flex; flex-wrap:wrap; gap:6px; }
-.pill{ display:inline-flex; gap:4px; align-items:center; background:#eef2ff; border:1px solid #c7d2fe; border-radius:999px; padding:2px 8px; font-size:12px; line-height:1.2; }
+.pill{ display:inline-flex; gap:4px; align-items:center; background:#eef2ff; border:1px solid #c7d2fe; border-radius:999px; padding:2px 8px; font-size:12px; }
 
 .vendor-list{ display:grid; gap:12px; }
 .vendor-card{ border:1px solid var(--border); border-radius:12px; background:var(--card-bg); padding:10px 12px; }
 .vendor-head{ font-size:14px; font-weight:600; display:flex; gap:8px; align-items:center; cursor:pointer; list-style:none; }
 .vendor-head::-webkit-details-marker{ display:none; }
-.link{ background:none; border:none; color:var(--primary); font-size:12px; line-height:1.2; cursor:pointer; padding:0; }
+.link{ background:none; border:none; color:var(--primary); font-size:12px; cursor:pointer; padding:0; }
 .link.danger{ color:#b91c1c; }
 .ml8{ margin-left:8px; }
 
@@ -894,19 +904,20 @@ const toastMsg = ref(''); const toast = m => { toastMsg.value=m; setTimeout(()=>
 .ck span{ width:18px; height:18px; border:1px solid var(--border); border-radius:4px; display:inline-block; background:var(--card-bg); position:relative; }
 .ck input:checked + span::after{ content:''; position:absolute; inset:2px; background:var(--primary); border-radius:2px; }
 
-.btn{ border:1px solid var(--primary); background:var(--card-bg); color:var(--primary); border-radius:10px; padding:8px 12px; cursor:pointer; font-size:13px; line-height:1.2; }
+/* Buttons */
+.btn{ border:1px solid var(--primary); background:var(--card-bg); color:var(--primary); border-radius:10px; padding:8px 12px; cursor:pointer; font-size:13px; }
 .btn.primary{ background:var(--primary); border-color:var(--primary); color:#fff; }
 .btn.ghost{ border-color:var(--border); color:var(--text); background:var(--card-bg); }
 .btn.small{ padding:6px 10px; font-size:12px; }
-.file-btn{ position:relative; overflow:hidden; }
-.file-btn input{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+.file-btn{ position:relative; overflow:hidden } .file-btn input{ position:absolute; inset:0; opacity:0; cursor:pointer }
 
+/* 底部 */
 .bottom{ max-width:1200px; margin:12px auto 0; background:var(--card-bg); border:1px solid var(--border); border-radius:16px; padding:12px; }
 .row.wrap{ flex-wrap:wrap; row-gap:8px; }
 
-.toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--text); color:#fff; font-size:13px; line-height:1.3; padding:10px 14px; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.4); z-index:9999; }
-.fade-enter-active, .fade-leave-active{ transition:opacity .18s; }
-.fade-enter-from, .fade-leave-to{ opacity:0; }
+/* Toast */
+.toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--text); color:#fff; font-size:13px; padding:10px 14px; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.4); z-index:9999; }
+.fade-enter-active, .fade-leave-active{ transition:opacity .18s } .fade-enter-from, .fade-leave-to{ opacity:0 }
 
 @media (max-width:1024px){
   .inv-grid{ grid-template-columns:1fr; }
