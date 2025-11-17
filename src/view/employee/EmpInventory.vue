@@ -421,8 +421,9 @@ function goHome(){
 .table{ width:100%; border-collapse:collapse; font-size:15px; }
 .table thead th{
   text-align:left;
-  background:var(--table-head-bg, var(--bg-top, #f1f5f9));
-  color:var(--table-head-text, var(--text-main));
+  /* 原本用深色變數，改成白色頭列，讓黑色框不那麼突出 */
+  background:var(--bg-card);
+  color:var(--text-main);
   font-weight:600;
   padding:10px 12px;
   border-bottom:1px solid var(--border);

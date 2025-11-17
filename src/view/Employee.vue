@@ -17,6 +17,18 @@
 
       <!-- 右側 chips / 按鈕 -->
       <div class="actions">
+        <!-- 通知鈴鐺（含小紅點） -->
+        <button
+          ref="bellBtnRef"
+          class="chip-btn ghost icon-only bell-btn"
+          title="通知中心"
+          aria-label="通知中心"
+          @click="toggleBell"
+        >
+          🔔
+          <span v-if="hasUnread" class="dot" aria-hidden="true"></span>
+        </button>
+
         <!-- 系統設定：只有圖示 -->
         <button
           class="chip-btn ghost icon-only"
@@ -34,6 +46,81 @@
         <button class="chip-btn danger" @click="onLogout">登出</button>
       </div>
     </header>
+
+    <!-- 通知面板（含群組收放） -->
+    <transition name="fade">
+      <div
+        v-if="bellOpen"
+        ref="popoverRef"
+        class="notif-popover card"
+        role="dialog"
+        aria-label="通知中心"
+      >
+        <div class="np-head">
+          <div class="np-title">通知中心</div>
+          <div class="np-sub">
+            {{ roleLabel }}・{{ runtimeLabel }}・{{ todayStr }}
+          </div>
+        </div>
+
+        <div v-if="alerts.length" class="np-list">
+          <div
+            v-for="(g, gi) in groupedAlerts"
+            :key="g.key || gi"
+            class="np-group"
+          >
+            <!-- 群組標題：可收放 -->
+            <button
+              class="np-group-head as-button"
+              @click="toggleGroup(g.key)"
+              :aria-expanded="openGroups.has(g.key) ? 'true' : 'false'"
+              :aria-controls="`grp-${g.key}`"
+            >
+              <span class="np-group-title">{{ g.title }}</span>
+              <span class="np-group-badge">{{ g.items.length }}</span>
+              <span class="arrow" :class="{ open: openGroups.has(g.key) }">▾</span>
+            </button>
+
+            <!-- 群組內容：收放 + 動畫 -->
+            <transition name="accordion">
+              <div
+                v-show="openGroups.has(g.key)"
+                class="np-items"
+                :id="`grp-${g.key}`"
+              >
+                <!-- 可點擊導頁 -->
+                <button
+                  v-for="(a, i) in g.items"
+                  :key="a.id || i"
+                  class="np-item as-button"
+                  @click="goAlert(a)"
+                >
+                  <div class="np-item-main">
+                    <span class="badge" :class="badgeClass(a.level)">{{ levelText(a.level) }}</span>
+                    <span class="np-item-text">{{ a.text }}</span>
+                  </div>
+                  <div class="np-item-sub">
+                    <span v-if="a.date" class="np-sub-chip">{{ a.date }}</span>
+                    <span v-if="a.extra" class="np-sub-chip">{{ a.extra }}</span>
+                  </div>
+                </button>
+              </div>
+            </transition>
+          </div>
+        </div>
+
+        <div v-else class="np-empty">
+          <div class="ico">✅</div>
+          <div>目前沒有通知</div>
+        </div>
+
+        <div class="np-foot">
+          <button class="chip-btn" @click="markAllRead">全部標為已讀</button>
+          <div class="spacer"></div>
+          <button class="chip-btn ghost" @click="bellOpen=false">關閉</button>
+        </div>
+      </div>
+    </transition>
 
     <div class="body">
       <!-- 側邊欄 -->
@@ -147,24 +234,19 @@ import { useAuth } from '@/store/auth'
 import { useScope } from '@/store/scope'
 import { usePerm } from '@/store/perm'
 import * as ds from '@/store/datasource'
-import seed from '@/seed/seedData' // 👉 假資料後備來源
+import seed from '@/seed/seedData'
 
-// 路由/登入/範圍/權限
 const route = useRoute()
 const router = useRouter()
 const { logout } = useAuth()
 const scope = useScope()
 const perm = usePerm()
-perm.ensureLoaded?.() // 若有定義則呼叫
+perm.ensureLoaded?.()
 
-/* =========================
- * 假資料載入作為顯示層 fallback（不覆寫全域 store）
- * ========================= */
-const seedRef = ref(seed()) // 一份只讀副本
+/* 假資料做顯示 fallback */
+const seedRef = ref(seed())
 
-/* =========================
- * 資料來源標籤（支持跨頁同步）
- * ========================= */
+/* 資料來源標籤 */
 const dsMode = ref((ds.getMode && ds.getMode()) || localStorage.getItem('settings.datasource.mode') || 'mock')
 function onDsStorage(e){
   if (e && e.key === 'settings.datasource.mode') {
@@ -174,67 +256,235 @@ function onDsStorage(e){
 }
 const runtimeLabel = computed(() => dsMode.value === 'firebase' ? 'Firebase' : 'Local（假資料）')
 
-/* =========================
- * 從 scope 或 seed 推導品牌/門市/使用者顯示用資訊（只顯示，不改 store）
- * ========================= */
-const storeId = computed(() => {
-  return scope.storeId || seedRef.value.settings?.store?.defaultStoreId || 'hn-taipei'
-})
+/* 顯示資訊（優先 scope，否則 seed） */
+const storeId = computed(() => scope.storeId || seedRef.value.settings?.store?.defaultStoreId || 'hn-taipei')
 const storeObj = computed(() => seedRef.value.stores.find(s => s.id === storeId.value) || { id: 's1', name: '某某餐飲-1號' })
 const storeName = computed(() => scope.storeName || storeObj.value.name)
 const brandTitle = computed(() => scope.brandName || '海南雞 餐飲')
-
-// 使用者名稱：優先 scope.userName，否則從 seed 找同門市的一位使用者顯示
 const userName = computed(() => {
   if (scope.userName) return scope.userName
   const u = seedRef.value.users.find(u => u.storeId === storeId.value) || seedRef.value.users[0]
   return u?.name || '員工'
 })
 
-/* =========================
- * 權限與角色顯示（店長 / 門市人員）
- * ========================= */
+/* 權限與角色顯示 */
 function can(key){
   try{
     if (typeof perm?.can === 'function') return !!perm.can(key)
     return !!perm?.perms?.[key]
-  }catch{
-    return false
-  }
+  }catch{ return false }
 }
 const roleLabel = computed(() => (perm?.isManager ? '店長' : '門市人員'))
 
-/* =========================
- * 主題處理：localStorage.theme -> 'light' / 'dark'
- * ========================= */
+/* 主題處理 */
 const theme = ref('light')
-function updateThemeFromLocal(){
-  const t = localStorage.getItem('theme')
-  theme.value = t === 'dark' ? 'dark' : 'light'
-}
+function updateThemeFromLocal(){ theme.value = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light' }
 function onStorage(e){
   if (!e) return
   if (e.key === 'theme') updateThemeFromLocal()
-  onDsStorage(e) // 同步監聽資料來源切換
+  onDsStorage(e)
 }
-onMounted(() => {
-  updateThemeFromLocal()
-  window.addEventListener('storage', onStorage)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('storage', onStorage)
-})
+onMounted(()=>{ updateThemeFromLocal(); window.addEventListener('storage', onStorage) })
+onBeforeUnmount(()=> window.removeEventListener('storage', onStorage))
 const themeClass = computed(() => (theme.value === 'dark' ? 'dark' : ''))
 const themeLabel = computed(() => (theme.value === 'dark' ? '深色' : '淺色'))
 
-/* =========================
- * 導航
- * ========================= */
+/* ===== 通知中心 ===== */
+const bellOpen = ref(false)
+const bellBtnRef = ref(null)
+const popoverRef = ref(null)
+const todayStr = computed(() => new Date().toISOString().slice(0,10))
+const READ_KEY = 'notif-read-emp'
+const ACCORDION_KEY = 'notif-accordion-open-groups-emp'
+
+function toggleBell(){ bellOpen.value = !bellOpen.value }
+function onDocClick(e){
+  if (!bellOpen.value) return
+  const t = e.target
+  const inBtn = bellBtnRef.value?.contains(t)
+  const inPanel = popoverRef.value?.contains(t)
+  if (!inBtn && !inPanel) bellOpen.value = false
+}
+function onKey(e){ if (e.key === 'Escape') bellOpen.value = false }
+onMounted(()=>{
+  document.addEventListener('click', onDocClick, { capture:true })
+  document.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(()=>{
+  document.removeEventListener('click', onDocClick, { capture:true })
+  document.removeEventListener('keydown', onKey)
+})
+
+/** 依「目前門市」彙整通知，並附上導頁資訊 target:{ name, query } */
+const alerts = computed(()=>{
+  const s = seedRef.value || {}
+  const sid = storeId.value
+  const list = []
+  const productsMap = new Map((s.products||[]).map(p=>[p.id,p]))
+
+  // 1) 低庫存 / 到期 -> emp-inventory
+  for (const it of (s.inventory||[]).filter(x=>x.storeId===sid)){
+    const p = productsMap.get(it.sku)
+    if (!p) continue
+    if (typeof p.safeStock==='number' && typeof it.qty==='number' && it.qty < p.safeStock){
+      list.push({
+        id:`low-${sid}-${it.sku}`,
+        level:'warn',
+        text:`${it.name} 低於安全量（${it.qty}/${p.safeStock}）`,
+        date: todayStr.value,
+        target:{ name:'emp-inventory', query:{ sku: it.sku } }
+      })
+    }
+    if (it.exp && it.exp <= todayStr.value){
+      list.push({
+        id:`exp-${sid}-${it.sku}`,
+        level:'info',
+        text:`${it.name} 已過期或今日到期（${it.exp}）`,
+        date: it.exp,
+        target:{ name:'emp-inventory', query:{ sku: it.sku, exp: it.exp } }
+      })
+    }
+  }
+
+  // 2) 今日配送 -> emp-delivery
+  for (const d of (s.empDeliveries||[])){
+    if (d.storeId===sid){
+      list.push({
+        id:`ed-${d.id}`, level:'info',
+        text:`配送 ${d.date}：${d.items?.length||0} 項，狀態：${statusText(d.status)}`,
+        date: d.date,
+        target:{ name:'emp-delivery', query:{ date: d.date, id: d.id } }
+      })
+    }
+  }
+  for (const sch of (s.delivery?.schedule||[])){
+    for (const stop of (sch.stops||[])){
+      if (stop.storeId===sid){
+        list.push({
+          id:`sch-${sch.id}-${sid}`, level:'info',
+          text:`${sch.date}｜${sch.routeName||'配送路線'}・車 ${sch.vehicle||''}・ETA ${stop.eta||''}`.trim(),
+          date: sch.date,
+          target:{ name:'emp-delivery', query:{ date: sch.date } }
+        })
+      }
+    }
+  }
+
+  // 3) 請貨 / 訂單 -> emp-orders
+  for (const r of (s.demo?.empRequests||[])){
+    if (r.storeId===sid){
+      list.push({
+        id:`req-${r.id}`,
+        level: r.status==='pending' ? 'warn' : 'info',
+        text:`請貨單 ${r.id}（${r.items?.length||0} 項）狀態：${statusText(r.status)}`,
+        date: r.date,
+        target:{ name:'emp-orders', query:{ rid: r.id } }
+      })
+    }
+  }
+  for (const o of (s.demo?.empOrders||[])){
+    if (o.storeId===sid){
+      list.push({
+        id:`ord-${o.id}`,
+        level:'info',
+        text:`訂單 ${o.id} 已建立（${o.items?.length||0} 項）`,
+        date: o.date,
+        target:{ name:'emp-orders', query:{ oid: o.id } }
+      })
+    }
+  }
+
+  const uniq = new Map()
+  for (const a of list) uniq.set(a.id, a)
+  return Array.from(uniq.values())
+})
+
+const hasUnread = computed(()=>{
+  const read = JSON.parse(localStorage.getItem(READ_KEY) || '[]')
+  const readSet = new Set(read)
+  return alerts.value.some(a => !readSet.has(a.id))
+})
+function markAllRead(){
+  const ids = alerts.value.map(a=>a.id)
+  localStorage.setItem(READ_KEY, JSON.stringify(ids))
+}
+
+/* 點通知 => 標已讀 + 導頁 + 關閉面板 */
+function goAlert(a){
+  // 標記已讀
+  const read = new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]'))
+  read.add(a.id)
+  localStorage.setItem(READ_KEY, JSON.stringify([...read]))
+
+  // 導頁（安全降級：若 target 缺失就不導）
+  if (a?.target?.name){
+    router.push({ name:a.target.name, query:a.target.query || {} })
+  }
+  bellOpen.value = false
+}
+
+/** 輔助：狀態字眼統一 */
+function statusText(s){
+  if (s === 'preparing') return '準備中'
+  if (s === 'shipping')  return '運送中'
+  if (s === 'arrived')   return '已到店'
+  if (s === 'pending')   return '待處理'
+  if (s === 'submitted') return '已送出'
+  if (s === 'delivered') return '已到貨'
+  if (s === 'on_the_way')return '運送中'
+  if (s === 'delayed')   return '延誤'
+  return s || '—'
+}
+
+/* 依類別分組（庫存/配送/請貨） */
+const groupedAlerts = computed(()=>{
+  const g = { stock:[], delivery:[], request:[], other:[] }
+  for (const a of alerts.value){
+    const id = String(a.id)
+    if (id.startsWith('low-') || id.startsWith('exp-')) g.stock.push(a)
+    else if (id.startsWith('ed-') || id.startsWith('sch-')) g.delivery.push(a)
+    else if (id.startsWith('req-') || id.startsWith('ord-')) g.request.push(a)
+    else g.other.push(a)
+  }
+  const titleOf = k => k==='stock'?'庫存情況':k==='delivery'?'配送情況':k==='request'?'請貨／訂單':'其他'
+  return Object.entries(g)
+    .filter(([,arr])=>arr.length)
+    .map(([k,arr])=>({ key:k, title:titleOf(k), items:arr }))
+})
+
+function levelText(l){
+  if (l==='warn') return '注意'
+  if (l==='error') return '警示'
+  return '資訊'
+}
+function badgeClass(l){
+  if (l==='warn') return 'badge-warn'
+  if (l==='error') return 'badge-error'
+  return 'badge-info'
+}
+
+/* ====== 群組收放狀態（會記住） ====== */
+const openGroups = ref(new Set(['stock'])) // 預設展開庫存群組
+function saveOpenGroups(){
+  try { localStorage.setItem(ACCORDION_KEY, JSON.stringify([...openGroups.value])) } catch {}
+}
+function toggleGroup(key){
+  if (openGroups.value.has(key)) openGroups.value.delete(key)
+  else openGroups.value.add(key)
+  saveOpenGroups()
+}
+onMounted(()=>{
+  try{
+    const raw = localStorage.getItem(ACCORDION_KEY)
+    if (raw) openGroups.value = new Set(JSON.parse(raw))
+  }catch{}
+})
+
+/* ====== 導航 ====== */
 function isActive(name){ return route.name === name }
 function goNamed(name){ router.push({ name }) }
 function clickProtected(name, permissionKey){
   if (can(permissionKey)) goNamed(name)
-  // 無權限：保留靜默不導頁；若要提示可在此加上 toast
 }
 const fallbackTitle = computed(() => {
   if (isActive('emp-inventory')) return '門市庫存'
@@ -245,13 +495,9 @@ const fallbackTitle = computed(() => {
 })
 
 function goSettings(){
-  if (router.hasRoute('system-settings')){
-    router.push({ name:'system-settings' })
-  } else {
-    router.push('/settings')
-  }
+  if (router.hasRoute('system-settings')) router.push({ name:'system-settings' })
+  else router.push('/settings')
 }
-
 function onLogout(){
   try { logout?.() } catch {}
   if (router.currentRoute.value.name !== 'login'){
@@ -380,6 +626,100 @@ function onLogout(){
 .chip-btn.ghost{ background:var(--bg-top); }
 .chip-btn:hover{ filter:brightness(0.97); }
 
+/* 鈴鐺小紅點 */
+.bell-btn{ position:relative; }
+.bell-btn .dot{
+  position:absolute; top:-2px; right:-2px; width:9px; height:9px;
+  background:#ef4444; border:2px solid var(--bg-top); border-radius:999px;
+}
+
+/* 通知面板 */
+.notif-popover{
+  position:absolute;
+  right:88px;
+  top:66px;
+  width:460px;
+  max-width:calc(100vw - 24px);
+  z-index:60;
+
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  box-shadow:0 24px 60px rgba(0,0,0,.12);
+  overflow:hidden;
+}
+.emp-shell.dark .notif-popover{ box-shadow:0 28px 80px rgba(0,0,0,.9); }
+.np-head{ padding:12px 14px; border-bottom:1px solid var(--border); background:linear-gradient(to bottom, rgba(0,0,0,.02), transparent); }
+.np-title{ font-size:14px; font-weight:700; }
+.np-sub{ font-size:12px; color:var(--text-sub); }
+
+.np-list{ max-height:52vh; overflow:auto; padding:8px 10px 2px; }
+.np-group{ margin-bottom:10px; }
+.np-group-head{ display:flex; align-items:center; gap:8px; padding:6px 8px; }
+.np-group-title{ font-size:13px; font-weight:700; color: var(--text-main); }
+.np-group-badge{ font-size:11px; padding:2px 6px; border:1px solid var(--border); border-radius:999px; color: var(--text-sub); }
+.np-items{ display:flex; flex-direction:column; gap:8px; }
+
+/* 可點擊的通知卡 */
+.np-item{
+  border:1px solid var(--border); border-radius:10px; background:var(--bg-card);
+  padding:8px 10px; box-shadow:0 2px 6px rgba(0,0,0,.03);
+  text-align:left; width:100%;
+}
+.as-button{ cursor:pointer; background:none; border:none; }
+.as-button:hover{ background:rgba(0,0,0,.02); }
+.emp-shell.dark .as-button:hover{ background:rgba(255,255,255,.04); }
+
+.np-item-main{ display:flex; align-items:center; gap:8px; }
+.np-item-text{ font-size:13px; color: var(--text-main); }
+.np-item-sub{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.np-sub-chip{ font-size:11px; color: var(--text-sub); border:1px solid var(--border); border-radius:999px; padding:2px 6px; }
+
+.np-empty{ padding:28px 16px; text-align:center; color: var(--text-sub); }
+.np-empty .ico{ font-size:24px; margin-bottom:6px; }
+
+.np-foot{ padding:10px 12px; border-top:1px solid var(--border); background:var(--bg-card); display:flex; align-items:center; gap:8px; }
+
+/* 通知等級 badge */
+.badge{
+  border-radius:999px; font-size:11px; line-height:1.2; padding:3px 6px;
+  border:1px solid var(--border); align-self:flex-start; font-weight:600;
+}
+.badge-info{ background:#eff6ff; border-color:#bfdbfe; color:#1e3a8a; }
+.badge-warn{ background:#fffbeb; border-color:#fde68a; color:#92400e; }
+.badge-error{ background:#fee2e2; border-color:#fecaca; color:#991b1b; }
+
+/* 群組標題（可收放） */
+.np-group-head.as-button{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  width:100%; padding:6px 8px; background:none; border:none; cursor:pointer; text-align:left;
+  color: var(--text-main); font-weight:600; border-radius:10px;
+}
+.np-group-head.as-button:hover{ background:rgba(0,0,0,.03); }
+.emp-shell.dark .np-group-head.as-button:hover{ background:rgba(255,255,255,.05); }
+.arrow{ transition: transform .2s ease; }
+.arrow.open{ transform: rotate(180deg); }
+
+/* Accordion 動畫 */
+.accordion-enter-active,
+.accordion-leave-active {
+  transition: max-height .25s ease, opacity .2s ease;
+}
+.accordion-enter-from,
+.accordion-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+.accordion-enter-to,
+.accordion-leave-from {
+  max-height: 500px;
+  opacity: 1;
+}
+
+/* 動畫 */
+.fade-enter-active,.fade-leave-active{ transition:opacity .15s ease; }
+.fade-enter-from,.fade-leave-to{ opacity:0; }
+
 /* -------------------------------------------------
    主體兩欄區
 ------------------------------------------------- */
@@ -448,32 +788,38 @@ function onLogout(){
   display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px;
   background:linear-gradient(to bottom,rgba(0,0,0,0) 0%,rgba(0,0,0,.02) 100%);
   border:1px solid var(--border); border-radius:12px;
-  box-shadow:0 12px 32px rgba(0,0,0,.04); padding:16px;
+  box-shadow:0 12px 32px rgba(0,0,0,0.04); padding:16px;
 }
 .emp-shell.dark .page-head{
   background:linear-gradient(to bottom,rgba(255,255,255,.03) 0%,rgba(0,0,0,0) 60%);
-  box-shadow:0 20px 40px rgba(0,0,0,.8);
+  box-shadow:0 20px 40px rgba(0,0,0,0.8);
 }
 .page-title{ font-size:18px; font-weight:600; color:var(--text-main); line-height:1.3; display:flex; align-items:center; gap:8px; }
 
 .page-chips{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .mini-chip{
   border-radius:8px; border:1px solid var(--border); background:var(--bg-side);
-  color:var(--text-main); font-size:12px; line-height:1.2; padding:6px 8px; box-shadow:0 2px 4px rgba(0,0,0,.03);
+  color:var(--text-main); font-size:12px; line-height:1.2; padding:6px 8px; box-shadow:0 2px 4px rgba(0,0,0,0.03);
 }
-.emp-shell.dark .mini-chip{ box-shadow:0 2px 8px rgba(0,0,0,.8); }
+.emp-shell.dark .mini-chip{ box-shadow:0 2px 8px rgba(0,0,0,0.8); }
 .mini-chip.ghost{ background:var(--bg-side); }
 
 /* 主內容卡片 */
 .content-card{
   background:var(--bg-card); border:1px solid var(--border); border-radius:12px;
-  box-shadow:0 12px 32px rgba(0,0,0,.04); padding:16px; min-height:360px; min-width:0; color:var(--text-main);
+  box-shadow:0 12px 32px rgba(0,0,0,0.04); padding:16px; min-height:360px; min-width:0; color:var(--text-main);
 }
-.emp-shell.dark .content-card{ box-shadow:0 24px 48px rgba(0,0,0,.9); }
+.emp-shell.dark .content-card{ box-shadow:0 24px 48px rgba(0,0,0,0.9); }
 
 /* RWD */
 @media (max-width:1024px){
   .body{ grid-template-columns:100%; }
   .sidebar{ border-right:none; border-bottom:1px solid var(--border); min-height:auto; }
+
+  .notif-popover{
+    right:16px;
+    top:72px;
+    width:calc(100vw - 32px);
+  }
 }
 </style>
