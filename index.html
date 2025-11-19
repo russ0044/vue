@@ -1,17 +1,27 @@
 <!doctype html>
-<html>
+<html lang="zh-Hant-TW">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2563eb" />
     <title>餐易館</title>
 
-    <!-- 字型建議：Noto Sans TC（400/500/600/700） -->
+    <!-- ✅ 字型建議：Noto Sans TC（400/500/600/700） -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- 可選：PWA 或 favicon -->
+    <link rel="icon" href="/favicon.ico" />
   </head>
+
   <body>
     <div id="app"></div>
-    <!-- 只要這一個入口 -->
+
+    <!-- ✅ Vue 主入口 -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
