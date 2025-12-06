@@ -1,29 +1,31 @@
 // src/composables/useToast.js
-import { ref } from 'vue'
+import { reactive } from 'vue'
 
 /**
- * 全域 Toast 狀態
- * 你只要在 App.vue 放 <Toast />，任何地方呼叫 showToast() 都會顯示。
+ * 全域 toast 狀態
+ * toasts: [{ id, message, type }]
+ * type: 'info' | 'success' | 'warn' | 'error'
  */
-export const toasts = ref([])
+const toasts = reactive([])
 
-/**
- * 顯示一則 Toast
- * @param {string} msg 訊息內容
- * @param {'info'|'success'|'error'|'warn'} [type='info'] 類型
- * @param {number} [timeout=3000] 顯示時間（毫秒）
- */
-export function showToast(msg, type = 'info', timeout = 3000) {
-  const id = Date.now() + Math.random()
-  toasts.value.push({ id, msg, type })
-
-  // 到期自動移除
-  setTimeout(() => {
-    toasts.value = toasts.value.filter(t => t.id !== id)
-  }, timeout)
+/** 給 ToastHost.vue 使用，拿到目前所有 toast */
+export function useToastState () {
+  return { toasts }
 }
 
-/** 清空所有 Toast（很少用，提供除錯或重置時使用） */
-export function clearToast() {
-  toasts.value = []
+/**
+ * 顯示一則 toast
+ * @param {string} message - 要顯示的內容
+ * @param {'info'|'success'|'warn'|'error'} type
+ * @param {number} duration - 顯示多久(ms)
+ */
+export function showToast (message, type = 'info', duration = 3000) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  toasts.push({ id, message, type })
+
+  // 自動移除
+  setTimeout(() => {
+    const idx = toasts.findIndex(t => t.id === id)
+    if (idx >= 0) toasts.splice(idx, 1)
+  }, duration)
 }

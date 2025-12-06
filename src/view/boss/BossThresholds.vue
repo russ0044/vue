@@ -283,6 +283,11 @@ const d = reactive(read())
 let unSub = null
 onMounted(() => {
   unSub = subscribe?.((snap) => Object.assign(d, snap))
+
+  // 讓其它模組（通知中心 / 庫存頁）能共用目前門檻
+  if (typeof window !== 'undefined') {
+    window.__bossThresholds = thresholds
+  }
 })
 onBeforeUnmount(() => {
   unSub?.()
@@ -290,6 +295,7 @@ onBeforeUnmount(() => {
 
 const stores = computed(() => (Array.isArray(d?.stores) ? d.stores : []))
 
+/* 將 inventory 當成「可設定門檻的品項清單」 */
 const ingredients = computed(() =>
   Array.isArray(d?.inventory)
     ? d.inventory.map((i) => ({
@@ -303,7 +309,7 @@ const ingredients = computed(() =>
     : []
 )
 
-/* 標籤（可選功能） */
+/* 標籤（目前先留空，可之後擴充） */
 const tags = ref([])
 
 /* 左欄搜尋 / 篩選 */
@@ -341,18 +347,46 @@ const checkedIdsArr = computed({
   }
 })
 
-/* 門檻資料存取（目前用 localStorage，可之後換 Firebase） */
+/* 門檻資料存取（localStorage；通知中心/庫存頁也可共用同一 key） */
+const STORAGE_KEY = 'boss-thresholds'
+
 const thresholds = reactive(loadThresholds())
+
 function loadThresholds() {
   try {
-    return JSON.parse(localStorage.getItem('boss-thresholds') || '{}')
+    const raw = localStorage.getItem(STORAGE_KEY)
+    const obj = raw ? JSON.parse(raw) : {}
+    // 確保結構是 { sku: { global:{...}, byStore:{} } }
+    if (!obj || typeof obj !== 'object') return {}
+    Object.keys(obj).forEach((sku) => {
+      const rec = obj[sku]
+      if (!rec || typeof rec !== 'object') {
+        obj[sku] = { global: defaultRule(), byStore: {} }
+        return
+      }
+      if (!rec.global) rec.global = defaultRule()
+      if (!rec.byStore || typeof rec.byStore !== 'object') rec.byStore = {}
+    })
+    return obj
   } catch {
     return {}
   }
 }
+
 function saveThresholds() {
-  localStorage.setItem('boss-thresholds', JSON.stringify(thresholds))
+  const plain = JSON.parse(JSON.stringify(thresholds))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(plain))
+
+  // 通知其它模組（通知中心 / 庫存頁）門檻有更新
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('boss-thresholds-updated', {
+        detail: plain
+      })
+    )
+  }
 }
+
 function defaultRule() {
   return {
     min: 0,
@@ -395,25 +429,35 @@ function selectIngredient(id) {
 /* 編輯表單資料 */
 const edit = reactive(defaultRule())
 
+/**
+ * 取得某個品項在目前 scope（全域 / 單店）的實際門檻設定，
+ * 這個邏輯可以被通知中心 / 庫存頁複用：
+ * - 全域： thresholds[sku].global
+ * - 單店： thresholds[sku].byStore[storeId] / fallback 回 global
+ */
 function ruleFor(ingId) {
+  if (!ingId) return defaultRule()
+
   const rec =
     thresholds[ingId] ||
     (thresholds[ingId] = { global: defaultRule(), byStore: {} })
 
-  return scope.value === 'store'
-    ? rec.byStore[selectedStoreId.value] || rec.global
-    : rec.global
+  if (scope.value === 'store' && selectedStoreId.value) {
+    return rec.byStore[selectedStoreId.value] || rec.global
+  }
+  return rec.global
 }
 
+/* 載入目前選取品項的門檻到右側表單 */
 function loadEditing() {
-  if (selected.value) {
-    Object.assign(
-      edit,
-      JSON.parse(JSON.stringify(ruleFor(selected.value.id)))
-    )
-  }
+  if (!selected.value) return
+  const src = ruleFor(selected.value.id)
+  Object.assign(edit, JSON.parse(JSON.stringify(src)))
 }
-watch([selectedId, scope, selectedStoreId], loadEditing)
+
+watch([selectedId, scope, selectedStoreId], () => {
+  loadEditing()
+})
 
 /* 驗證 */
 const validRange = computed(
@@ -429,12 +473,12 @@ function saveEditing() {
     thresholds[id] ||
     (thresholds[id] = { global: defaultRule(), byStore: {} })
 
-  if (scope.value === 'store') {
-    rec.byStore[selectedStoreId.value] = JSON.parse(
-      JSON.stringify(edit)
-    )
+  const payload = JSON.parse(JSON.stringify(edit))
+
+  if (scope.value === 'store' && selectedStoreId.value) {
+    rec.byStore[selectedStoreId.value] = payload
   } else {
-    rec.global = JSON.parse(JSON.stringify(edit))
+    rec.global = payload
   }
 
   saveThresholds()
@@ -450,6 +494,7 @@ function isOverridden(id) {
   const rec = thresholds[id]
   return !!(
     scope.value === 'store' &&
+    selectedStoreId.value &&
     rec?.byStore &&
     rec.byStore[selectedStoreId.value] !== undefined
   )
@@ -457,10 +502,12 @@ function isOverridden(id) {
 
 function clearOverride(id) {
   const rec = thresholds[id]
-  if (rec?.byStore) delete rec.byStore[selectedStoreId.value]
-  saveThresholds()
-  loadEditing()
-  toast('已清除覆寫')
+  if (rec?.byStore && selectedStoreId.value) {
+    delete rec.byStore[selectedStoreId.value]
+    saveThresholds()
+    loadEditing()
+    toast('已清除覆寫')
+  }
 }
 
 /* 批次動作 & 匯出入 JSON */
@@ -471,7 +518,7 @@ function applyBatchToSelected() {
     const rec =
       thresholds[id] ||
       (thresholds[id] = { global: defaultRule(), byStore: {} })
-    if (scope.value === 'store') {
+    if (scope.value === 'store' && selectedStoreId.value) {
       rec.byStore[selectedStoreId.value] = data
     } else {
       rec.global = data
@@ -482,11 +529,10 @@ function applyBatchToSelected() {
 }
 
 function clearBatchOverride() {
-  if (scope.value !== 'store' || !checkedIds.size) return
+  if (scope.value !== 'store' || !checkedIds.size || !selectedStoreId.value) return
   checkedIds.forEach((id) => {
     const rec = thresholds[id]
-    if (rec?.byStore)
-      delete rec.byStore[selectedStoreId.value]
+    if (rec?.byStore) delete rec.byStore[selectedStoreId.value]
   })
   saveThresholds()
   toast('已清除覆寫')
@@ -510,7 +556,16 @@ function importJSON(e) {
     try {
       const obj = JSON.parse(String(r.result))
       if (!obj || typeof obj !== 'object') throw new Error()
+
+      // 先清空再覆蓋，避免舊 key 殘留
+      Object.keys(thresholds).forEach((k) => delete thresholds[k])
       Object.assign(thresholds, obj)
+
+      // 補齊結構並存回 localStorage，讓通知中心 / 庫存頁拿到的是乾淨資料
+      const normalized = loadThresholdsFromObject(thresholds)
+      Object.keys(thresholds).forEach((k) => delete thresholds[k])
+      Object.assign(thresholds, normalized)
+
       saveThresholds()
       loadEditing()
       toast('已匯入')
@@ -519,6 +574,21 @@ function importJSON(e) {
     }
   }
   r.readAsText(f, 'utf-8')
+}
+
+/* 匯入時整理結構用的小工具 */
+function loadThresholdsFromObject(src) {
+  const obj = JSON.parse(JSON.stringify(src || {}))
+  Object.keys(obj).forEach((sku) => {
+    const rec = obj[sku]
+    if (!rec || typeof rec !== 'object') {
+      obj[sku] = { global: defaultRule(), byStore: {} }
+      return
+    }
+    if (!rec.global) rec.global = defaultRule()
+    if (!rec.byStore || typeof rec.byStore !== 'object') rec.byStore = {}
+  })
+  return obj
 }
 </script>
 
@@ -873,7 +943,6 @@ function importJSON(e) {
   line-height: 1.4;
 }
 .dark .fg-tip .info {
-  /* 深色下用稍微偏亮綠背景，避免太刺眼 */
   background: color-mix(in oklab, #065f46 20%, #ffffff 10%, var(--bg-side) 70%);
   border-color: #5eead4;
   color: #6ee7b7;
@@ -900,7 +969,7 @@ function importJSON(e) {
   flex-wrap: wrap;
 }
 
-/* 共用按鈕樣式，對齊 BossShell 右上角 chip-btn/btn 的語言 */
+/* 共用按鈕樣式 */
 .btn {
   border: 1px solid color-mix(in oklab, #2563eb, #ccd7ff 65%);
   background: var(--bg-card);

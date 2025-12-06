@@ -17,11 +17,17 @@
         <div class="avatar-circle">
           <img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="user" />
         </div>
-        <div class="avatar-hint">請先登入帳號以進入系統</div>
+        <div class="avatar-hint">請選擇登入方式</div>
       </div>
 
-      <!-- 登入表單 -->
-      <form class="form-area" @submit.prevent="onLogin">
+      <!-- 登入方式切換 -->
+      <div class="tabs">
+        <button class="tab" :class="{active: mode==='email'}" @click="mode='email'">電子郵件登入</button>
+        <button class="tab" :class="{active: mode==='invite'}" @click="mode='invite'">邀請碼登入</button>
+      </div>
+
+      <!-- 電子郵件登入表單 -->
+      <form v-if="mode==='email'" class="form-area" @submit.prevent="onLoginEmail">
         <label class="field">
           <span class="label">電子郵件</span>
           <input
@@ -31,7 +37,7 @@
             placeholder="boss@hunanchicken.example"
             autocomplete="username"
             required
-            @keydown.enter="onLogin"
+            @keydown.enter="onLoginEmail"
           />
         </label>
 
@@ -46,7 +52,7 @@
               autocomplete="current-password"
               required
               ref="pwRef"
-              @keydown.enter="onLogin"
+              @keydown.enter="onLoginEmail"
               @keyup="detectCaps"
             />
             <button type="button" class="btn tiny ghost pw-toggle" @click="showPassword = !showPassword">
@@ -58,18 +64,18 @@
 
         <div class="row-between">
           <button type="button" class="link" @click="onForgot">忘記密碼？</button>
-          <button type="button" class="link ghost" @click="onInviteJoin">使用邀請碼加入</button>
+          <button type="button" class="link ghost" @click="mode='invite'">改用邀請碼登入</button>
         </div>
 
         <transition name="fade">
-          <p v-if="errorMsg" class="msg err">{{ errorMsg }}</p>
+          <p v-if="errorMsg && mode==='email'" class="msg err">{{ errorMsg }}</p>
         </transition>
         <transition name="fade">
-          <p v-if="infoMsg" class="msg info">{{ infoMsg }}</p>
+          <p v-if="infoMsg && mode==='email'" class="msg info">{{ infoMsg }}</p>
         </transition>
 
         <div class="btn-row">
-          <button type="submit" class="btn primary" :disabled="!canSubmit || loading">
+          <button type="submit" class="btn primary" :disabled="!canSubmitEmail || loading">
             {{ loading ? '登入中…' : '登入' }}
           </button>
           <button type="button" class="btn ghost" :disabled="loading" @click="goRegister">
@@ -78,9 +84,55 @@
         </div>
       </form>
 
-      <!-- Demo 帳號 -->
+      <!-- 邀請碼登入表單（格式固定為 R3W1-ASCU 類型：4碼-4碼） -->
+      <form v-else class="form-area" @submit.prevent="onLoginInvite">
+        <label class="field">
+          <span class="label">邀請碼</span>
+          <input
+            type="text"
+            v-model.trim="inviteCode"
+            class="input"
+            placeholder="格式：R3W1-ASCU"
+            autocomplete="one-time-code"
+            required
+            @keydown.enter="onLoginInvite"
+          />
+        </label>
+
+        <label class="field">
+          <span class="label">顯示名稱</span>
+          <input
+            type="text"
+            v-model.trim="displayName"
+            class="input"
+            placeholder="例如：台北店小明"
+            required
+            @keydown.enter="onLoginInvite"
+          />
+        </label>
+
+        <div class="row-between">
+          <button type="button" class="link ghost" @click="mode='email'">回到電子郵件登入</button>
+          <span class="muted small">邀請碼格式：4碼-4碼（大寫英數）</span>
+        </div>
+
+        <transition name="fade">
+          <p v-if="errorMsg && mode==='invite'" class="msg err">{{ errorMsg }}</p>
+        </transition>
+        <transition name="fade">
+          <p v-if="infoMsg && mode==='invite'" class="msg info">{{ infoMsg }}</p>
+        </transition>
+
+        <div class="btn-row">
+          <button type="submit" class="btn primary" :disabled="!canSubmitInvite || loading">
+            {{ loading ? '加入中…' : '使用邀請碼登入' }}
+          </button>
+        </div>
+      </form>
+
+      <!-- Demo 帳號（電子郵件） -->
       <footer class="demo-hint">
-        <details open>
+        <details>
           <summary>示範登入帳號（四種角色，點一下自動貼入）</summary>
           <ul class="demo-list">
             <li v-for="u in demoList" :key="u.email" class="demo-item">
@@ -93,7 +145,7 @@
                   <code>{{ u.password }}</code>
                 </div>
               </div>
-              <button class="btn tiny ghost" @click="quickFill(u.email, u.password)">一鍵貼入</button>
+              <button class="btn tiny ghost" @click="quickFillEmail(u.email, u.password)">一鍵貼入</button>
             </li>
           </ul>
         </details>
@@ -114,7 +166,10 @@ const { login } = useAuth()
 const { setRole } = useRoleStore()
 const { reset } = usePerm()
 
-/** 示範帳號（與 seedData 對齊） */
+/** ---- 登入模式 ---- */
+const mode = ref('email') // 'email' | 'invite'
+
+/** ---- 電子郵件示範帳號（與 seedData 對齊） ---- */
 const DEMO = {
   'boss@hunanchicken.example': {
     id: 'U001',
@@ -153,7 +208,7 @@ const demoList = computed(() => ([
   { title:'員工（台北）', roleLabel:'Employee', email:'tpe-staff-b@hunanchicken.example', password:'emp123' },
 ]))
 
-// 表單狀態
+/** ---- 電子郵件登入狀態 ---- */
 const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
@@ -164,15 +219,33 @@ const pwRef = ref(null)
 const capsOn = ref(false)
 
 const emailOk = computed(() => /\S+@\S+\.\S+/.test(email.value))
-const canSubmit = computed(() => emailOk.value && password.value.length >= 3)
+const canSubmitEmail = computed(() => emailOk.value && password.value.length >= 3)
 
-watch([email, password], () => { errorMsg.value = ''; infoMsg.value = '' })
+/** ---- 邀請碼登入狀態 ---- */
+const inviteCode = ref('')
+const displayName = ref('')
 
-function onForgot(){ infoMsg.value = '請聯繫老闆／管理者重設密碼。'; setTimeout(()=>infoMsg.value='', 2600) }
-function onInviteJoin(){ infoMsg.value = '員工／中央廚房可使用「邀請碼」加入（示範）。'; setTimeout(()=>infoMsg.value='', 2600) }
+/** 僅允許格式：R3W1-ASCU 類型（4碼-4碼，大寫英數） */
+const invitePattern = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/
+const canSubmitInvite = computed(() => {
+  const code = inviteCode.value.trim().toUpperCase()
+  return invitePattern.test(code) && displayName.value.trim().length >= 2
+})
+
+/** 共用：清訊息 */
+watch([email, password, inviteCode, displayName, mode], () => {
+  errorMsg.value = ''
+  infoMsg.value = ''
+})
+
+/** 常見操作 */
+function onForgot(){
+  infoMsg.value = '請聯繫老闆／管理者重設密碼。'
+  setTimeout(()=>infoMsg.value='', 2600)
+}
 function goRegister(){ router.push('/register') }
 
-// 偵測 Caps Lock
+/** 偵測 Caps Lock */
 function detectCaps(e){
   const isLetter = (c) => c && c.length === 1 && /[a-zA-Z]/.test(c)
   if (!isLetter(e.key)) return
@@ -180,8 +253,8 @@ function detectCaps(e){
   capsOn.value = !!caps
 }
 
-// 一鍵貼入：統一樣式 + 自動聚焦密碼
-async function quickFill(e,p){
+/** 一鍵貼入（Email/Password） */
+async function quickFillEmail(e,p){
   email.value = e
   password.value = p
   showPassword.value = false
@@ -189,9 +262,9 @@ async function quickFill(e,p){
   pwRef.value?.focus()
 }
 
-// 登入
-async function onLogin () {
-  if (!canSubmit.value || loading.value) return
+/** ---- 電子郵件登入流程 ---- */
+async function onLoginEmail () {
+  if (!canSubmitEmail.value || loading.value) return
   loading.value = true
   try {
     const acc = DEMO[email.value.toLowerCase()]
@@ -204,23 +277,54 @@ async function onLogin () {
     reset()
     await nextTick()
 
-    // 建立完整 user 物件（auth.login 需要 user 與 user.role）
     const user = {
       id: acc.id,
       name: acc.name,
       email: email.value,
-      role: acc.role,              // 'Boss' | 'Employee' | 'Kitchen'
-      roleGroupId: acc.roleGroupId // 'rg-boss' | 'rg-store-manager' | ...
+      role: acc.role,
+      roleGroupId: acc.roleGroupId,
     }
 
     await Promise.resolve(login({ user }))
     setRole(acc.role)
 
-    // 依角色導頁
     if (acc.role === 'Boss')        router.push('/boss')
     else if (acc.role === 'Kitchen')router.push('/kitchen')
-    else                            router.push('/emp') // Employee（店長／員工）
+    else                            router.push('/emp')
   } finally {
+    loading.value = false
+  }
+}
+
+/** ---- 邀請碼登入流程（只檢查格式） ---- */
+async function onLoginInvite(){
+  if (!canSubmitInvite.value || loading.value) return
+  loading.value = true
+  try{
+    const code = inviteCode.value.trim().toUpperCase()
+    if (!invitePattern.test(code)){
+      errorMsg.value = '邀請碼格式錯誤，必須為 R3W1-ASCU 類型（4碼-4碼，大寫英數）'
+      return
+    }
+
+    // 清掉上一位使用者的權限快取
+    reset()
+    await nextTick()
+
+    // 產生臨時使用者（示範；正式版可改成呼叫後端）
+    const uid = 'IU' + Math.random().toString(36).slice(2, 8).toUpperCase()
+    const user = {
+      id: uid,
+      name: displayName.value || '新成員',
+      email: `${uid.toLowerCase()}@invite.local`,
+      role: 'Employee',           // 預設角色：員工
+      roleGroupId: 'rg-staff',    // 預設群組
+    }
+
+    await Promise.resolve(login({ user }))
+    setRole('Employee')
+    router.push('/emp')
+  } finally{
     loading.value = false
   }
 }
@@ -237,7 +341,7 @@ async function onLogin () {
   font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif
 }
 .login-card{
-  width:min(94vw,400px);
+  width:min(94vw,420px);
   background:#fff;border-radius:20px;border:1px solid #e2e8f0;
   box-shadow:0 32px 80px rgba(0,0,0,.08),0 6px 20px rgba(0,0,0,.04);
   padding:22px 22px 16px;display:grid;gap:20px
@@ -258,11 +362,19 @@ async function onLogin () {
 .avatar-circle img{width:40px;height:40px;object-fit:cover}
 .avatar-hint{font-size:.8rem;color:#475569;line-height:1.4}
 
+/* Tabs */
+.tabs{display:flex;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:6px}
+.tab{
+  flex:1; text-align:center; cursor:pointer; border:none; background:transparent;
+  padding:8px 10px; border-radius:8px; font-weight:700; color:#475569; transition:.15s;
+}
+.tab.active{ background:#fff; color:#0f172a; box-shadow:0 6px 16px rgba(0,0,0,.05); border:1px solid #e2e8f0 }
+
 /* 表單 */
 .form-area{display:grid;gap:14px}
 .field{display:grid;gap:6px}
 .label{font-size:.8rem;font-weight:600;color:#334155}
-.input{width:100%;padding:.65rem .7rem;border:1px solid #cbd5e1;border-radius:10px;font-size:.9rem;line-height:1.4;color:#0f172a;background:#fff;transition:.15s border, .15s box-shadow}
+.input{width:100%;padding:.65rem .7rem;border:1px solid #cbd5e1;border-radius:10px;font-size:.9rem;line-height:1.4;color:#0f172a;background:#fff;transition:.15s border, .15s box-shadow;}
 .input:focus{outline:2px solid #2563eb33;border-color:#2563eb}
 
 /* 密碼切換 */
@@ -294,14 +406,18 @@ async function onLogin () {
 .btn.ghost:hover{border-color:#2563eb;color:#2563eb}
 .btn.tiny{flex:unset;padding:.46rem .6rem;font-size:.78rem;border-radius:8px}
 
-/* Demo 區塊 */
-.demo-hint{font-size:.7rem;line-height:1.4;color:#64748b;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:12px;padding:10px 12px}
+/* Demo 區塊（Email） */
+.demo-hint{font-size:.7rem;line-height:1.4;color:#64748b;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:12px;padding:10px 12px;margin-top:4px}
 .demo-hint summary{cursor:pointer;font-weight:600;color:#475569;margin-bottom:4px;outline:none}
 .demo-list{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:8px}
 .demo-item{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:8px 10px}
 .demo-info{display:grid;gap:4px}
 .demo-cred{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:2px 6px}
+
+/* 文案 */
+.muted{color:#64748b}
+.small{font-size:.75rem}
 
 /* 動畫 */
 .fade-enter-active,.fade-leave-active{transition:opacity .18s}

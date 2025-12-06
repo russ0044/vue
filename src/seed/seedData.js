@@ -363,7 +363,10 @@ export const seedData = {
     { code: 'JOIN-HN-TPE-STF-001', roleGroupId: 'rg-staff', storeId: 'hn-taipei', used: false },
     { code: 'JOIN-HN-TXG-STF-001', roleGroupId: 'rg-staff', storeId: 'hn-taichung', used: false },
     { code: 'JOIN-HN-KHH-STF-001', roleGroupId: 'rg-staff', storeId: 'hn-kaohsiung', used: false },
-    { code: 'JOIN-HN-CK-001', roleGroupId: 'rg-kitchen', storeId: 'central-kitchen', used: false }
+    { code: 'JOIN-HN-CK-001', roleGroupId: 'rg-kitchen', storeId: 'central-kitchen', used: false },
+
+    // ✅ 新增：短碼邀請 DT8F-T6J9（員工，預設台北門市）
+    { code: 'DT8F-T6J9', roleGroupId: 'rg-staff', storeId: 'hn-taipei', used: false }
   ],
 
   runtime: { theme: 'light' },

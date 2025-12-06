@@ -124,7 +124,7 @@
             v-model="cfg"
             class="input codebox"
             rows="8"
-            placeholder="{&quot;apiKey&quot;:&quot;...&quot;,&quot;projectId&quot;:&quot;...&quot;}"
+            placeholder='{"apiKey":"...","projectId":"..."}'
           ></textarea>
 
           <div class="row mt">

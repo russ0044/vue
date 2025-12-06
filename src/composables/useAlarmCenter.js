@@ -1,136 +1,195 @@
 // src/composables/useAlarmCenter.js
-import { reactive, ref } from 'vue'
-import * as ds from '@/store/datasource'   // 你的資料源模組（mock / firebase 皆可）
-import { showToast } from '@/composables/useToast'
+// 統一產生「通知中心 / 鈴鐺」用的事件清單
+// 目前會：
+//  - 針對「全部門市」掃 inventory，找出：
+//      * 低於安全庫存
+//      * 即將到期 / 已過期
+//  - 掃 deliveries / empDeliveries，產生配送通知
+//  - 不再只看單一店面，所以老闆會看到 3 間門市共 20+ 筆低庫存
+
+import { reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import * as ds from '@/store/datasource'
+import { getMinQtyFromAllSources, getExpiryWarnDays } from '@/utils/thresholds'
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+
+function ensureContainers (snap) {
+  if (!snap) return
+  snap.inventory ||= []
+  snap.products ||= []
+  snap.thresholds ||= []
+  snap.stores ||= []
+  snap.empDeliveries ||= []
+  snap.deliveries ||= []
+  snap.kitchenRequests ||= []
+}
 
 /**
- * 告警中心全域狀態
- * items: [{ id, level, msg, ts, read }]
- * unread: 未讀數
- * hasCritical: 是否有嚴重告警（level === 'error'）
+ * 使用方式：
+ *   const { inventoryAlerts, deliveryAlerts, allAlerts, unreadCount } = useAlarmCenter()
  */
-const state = reactive({
-  items: [],
-  unread: 0,
-  hasCritical: false,
-})
+export function useAlarmCenter () {
+  const state = reactive({
+    snap: ds.read?.() || {},
+    now: Date.now()
+  })
+  ensureContainers(state.snap)
 
-/** 已提醒過的 key，避免同一條件狂跳 */
-const seenKeys = new Set()
+  // 監聽 datasource（mock / firebase 皆可）
+  let unsub = null
+  onMounted(() => {
+    unsub = ds.subscribe?.((next) => {
+      state.snap = next || {}
+      ensureContainers(state.snap)
+      state.now = Date.now()
+    })
+  })
+  onBeforeUnmount(() => unsub?.())
 
-/** 資料訂閱取消函數 / 定時器（若你還有輪詢） */
-let unsubscribe = null
-let timer = null
+  /* ------------ 庫存相關通知（全部門市） ------------ */
+  const inventoryAlerts = computed(() => {
+    const snap = state.snap
+    const products = snap.products || []
+    const storesById = new Map((snap.stores || []).map(s => [String(s.id), s]))
+    const warnDays = getExpiryWarnDays(snap)
 
-/** 建立告警（同時 Toast） */
-function pushAlarm({ key, msg, level = 'warn' }) {
-  // 防重複通知：同一 key 只提醒一次，直到條件解除才可能再次提醒
-  if (key && seenKeys.has(key)) return
-  if (key) seenKeys.add(key)
+    const list = []
 
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  const item = { id, level, msg, ts: Date.now(), read: false }
-  state.items.unshift(item)
-  state.unread++
-  state.hasCritical ||= (level === 'error')
+    ;(snap.inventory || []).forEach(row => {
+      const storeId = String(row.storeId || '')
+      const store = storesById.get(storeId)
+      const storeName = store?.name || storeId || '未指定店面'
 
-  // 畫面提示
-  showToast(msg, level === 'error' ? 'error' : level)
-}
+      const product = products.find(p => p.id === row.sku)
+      const minQty = getMinQtyFromAllSources({
+        product,
+        sku: row.sku,
+        storeId,
+        snapshot: snap
+      })
+      const qty = Number(row.qty) || 0
 
-/** 將某個 key 從已提醒名單移除（條件解除可再提醒） */
-function clearSeen(key) {
-  if (!key) return
-  seenKeys.delete(key)
-}
+      // 1) 低於安全量
+      if (minQty > 0 && qty < minQty) {
+        list.push({
+          id: `stock-${storeId}-${row.sku}`,
+          kind: 'inventory',
+          level: 'warn',
+          msg: `${row.name || row.sku} 低於安全量（${qty}/${minQty}）`,
+          storeId,
+          storeName,
+          sku: row.sku,
+          ts: state.now
+        })
+      }
 
-/** 計算邏輯：依「快照快取」執行檢查，找出要提醒的點 */
-function evaluateSnapshot(snap) {
-  try {
-    /* 庫存檢查：數量 < safeThreshold → 警示 */
-    const inv = Array.isArray(snap?.inventory) ? snap.inventory : []
-    inv.forEach(r => {
-      const qty = Number(r.qty ?? r.quantity ?? 0)
-      const safe = Number(r.safeStock ?? r.safe ?? 0)
-      const name = r.name || r.sku || r.id
-      const key  = `inv_low|${name}`
+      // 2) 效期相關：已過期 / 即將到期
+      if (row.exp) {
+        const expDate = new Date(`${row.exp}T00:00:00`)
+        if (!Number.isNaN(expDate.getTime())) {
+          const diffDays = Math.floor((expDate.getTime() - state.now) / ONE_DAY_MS)
 
-      if (safe > 0 && qty < safe) {
-        pushAlarm({ key, level: qty === 0 ? 'error' : 'warn', msg: `【庫存】${name} 庫存${qty}（門檻 ${safe}）` })
-      } else {
-        clearSeen(key)
+          if (diffDays < 0) {
+            // 已過期
+            list.push({
+              id: `exp-${storeId}-${row.sku}`,
+              kind: 'expiry',
+              level: 'error',
+              msg: `${row.name || row.sku} 已過期（${row.exp}）`,
+              storeId,
+              storeName,
+              sku: row.sku,
+              ts: state.now
+            })
+          } else if (diffDays <= warnDays) {
+            // 即將到期（在預警天數內）
+            list.push({
+              id: `exp-${storeId}-${row.sku}`,
+              kind: 'expiry',
+              level: 'warn',
+              msg: `${row.name || row.sku} 即將到期（${row.exp}，${diffDays} 天內）`,
+              storeId,
+              storeName,
+              sku: row.sku,
+              ts: state.now
+            })
+          }
+        }
       }
     })
 
-    /* 訂單檢查：pending > 0 → 提醒 */
-    const orders = Array.isArray(snap?.orders) ? snap.orders : []
-    const pendings = orders.filter(o => o.status === 'pending')
-    if (pendings.length > 0) {
-      const key = 'order_pending'
-      pushAlarm({ key, level: 'info', msg: `【訂單】目前有 ${pendings.length} 張待審核` })
-    } else {
-      clearSeen('order_pending')
-    }
-
-    /* 配送檢查：延遲/異常 → 提醒（你的欄位可對應修改） */
-    const deliveries = Array.isArray(snap?.deliveries) ? snap.deliveries : []
-    const delayed = deliveries.filter(d => d.status === 'delayed' || d.delay === true)
-    if (delayed.length > 0) {
-      const key = 'delivery_delayed'
-      pushAlarm({ key, level: 'warn', msg: `【配送】有 ${delayed.length} 筆延遲` })
-    } else {
-      clearSeen('delivery_delayed')
-    }
-  } catch {
-    // 任何解析問題都忽略，避免中斷
-  }
-}
-
-/**
- * 啟動：訂閱資料源 +（可選）定時器
- * - Firebase：走 ds.subscribe((snap) => evaluateSnapshot(snap))
- * - Mock：也可提供 subscribe 回呼；若沒有，就靠 timer 去 ds.read() 輪詢
- */
-export function startAlarmCenter() {
-  // 避免重複啟動
-  if (unsubscribe || timer) return
-
-  if (typeof ds.subscribe === 'function') {
-    unsubscribe = ds.subscribe((snap) => {
-      if (snap) evaluateSnapshot(snap)
+    // 嚴重 > 注意 > 其他；同級再依店名、訊息排序
+    const levelOrder = { error: 0, warn: 1, info: 2, default: 3 }
+    list.sort((a, b) => {
+      const la = levelOrder[a.level] ?? 3
+      const lb = levelOrder[b.level] ?? 3
+      if (la !== lb) return la - lb
+      if (a.storeName !== b.storeName) {
+        return a.storeName.localeCompare(b.storeName, 'zh-Hant')
+      }
+      return (a.msg || '').localeCompare(b.msg || '', 'zh-Hant')
     })
-  } else if (typeof ds.read === 'function') {
-    // 無訂閱就每 15 秒拉一次（你可調整）
-    timer = setInterval(async () => {
-      try {
-        const snap = await ds.read()
-        if (snap) evaluateSnapshot(snap)
-      } catch {}
-    }, 15000)
+
+    return list
+  })
+
+  /* ------------ 配送相關通知（全部門市） ------------ */
+  const deliveryAlerts = computed(() => {
+    const snap = state.snap
+    const storesById = new Map((snap.stores || []).map(s => [String(s.id), s]))
+    const list = []
+
+    const allDeliveries = [
+      ...(snap.deliveries || []),
+      ...(snap.empDeliveries || [])
+    ]
+
+    allDeliveries.forEach(d => {
+      const storeId = String(d.storeId || '')
+      const storeName = storesById.get(storeId)?.name || storeId || '未指定店面'
+
+      if (d.status === 'on_the_way') {
+        list.push({
+          id: `dlv-${d.id}`,
+          kind: 'delivery',
+          level: 'info',
+          msg: `${storeName} 有配送在路上（ETA ${d.eta || '—'}）`,
+          storeId,
+          storeName,
+          ts: state.now
+        })
+      } else if (d.status === 'delayed') {
+        list.push({
+          id: `dlv-${d.id}`,
+          kind: 'delivery',
+          level: 'warn',
+          msg: `${storeName} 配送延誤（${d.delayReason || '請留意狀況'}）`,
+          storeId,
+          storeName,
+          ts: state.now
+        })
+      }
+    })
+
+    return list
+  })
+
+  /* ------------ 對外輸出 ------------ */
+
+  const all = computed(() => [
+    ...inventoryAlerts.value,
+    ...deliveryAlerts.value
+  ])
+
+  const unreadCount = computed(() => all.value.length)
+
+  return {
+    snapshot: state,        // 若你要 debug 原始 snap 也可以用
+    inventoryAlerts,
+    deliveryAlerts,
+    allAlerts: all,
+    unreadCount
   }
 }
 
-/** 停止：取消訂閱 / 清除 timer */
-export function stopAlarmCenter() {
-  try { unsubscribe?.(); } catch {}
-  unsubscribe = null
-  try { clearInterval(timer) } catch {}
-  timer = null
-}
-
-/** 取得告警狀態（給 AlarmBell.vue 使用） */
-export function useAlarmState() {
-  return state
-}
-
-/** 標示全部已讀（給 AlarmBell.vue 的「清空/已讀」按鈕） */
-export function markAllRead() {
-  state.items.forEach(i => (i.read = true))
-  state.unread = 0
-  state.hasCritical = false
-}
-
-/** 手動新增自訂告警（你也可以直接使用） */
-export function notify(msg, level = 'info', key = '') {
-  pushAlarm({ key, msg, level })
-}
+export default useAlarmCenter
